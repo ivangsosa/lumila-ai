@@ -1,8 +1,8 @@
 # Lumila AI - Plugin para Geany
 
-Asistente de IA para el editor Geany con soporte multi-provider.
+AI Assistant plugin for Geany editor with multi-provider support.
 
-## Características
+## Features
 
 - **Panel lateral de chat**: Interfaz integrada en Geany con UI moderna
   - Fondo negro con mensajes estilo burbujas
@@ -17,20 +17,20 @@ Asistente de IA para el editor Geany con soporte multi-provider.
   - Botón "New Chat" para iniciar nueva conversación
   - Contexto multi-mensaje enviado a los modelos
 - **Múltiples proveedores de IA**:
-  - ✅ **Anthropic Claude Sonnet 4.5** (implementado)
-  - ✅ **Anthropic Claude Sonnet 4.6** (implementado)
-  - ✅ **Anthropic Claude Opus 4.5** (implementado)
-  - ✅ **Anthropic Claude Opus 4.6** (implementado)
-  - ✅ **OpenAI GPT-5.2-Codex** (implementado)
-  - ✅ **OpenAI GPT-5.3-Codex** (implementado)
-  - ✅ **Google Gemini 3 Flash** (implementado)
-  - ✅ **Google Gemini 3 Pro** (implementado)
-  - ✅ **Google Gemini 3.1 Pro** (implementado)
-  - ✅ **Ollama Llama 3.2** (implementado, local)
-  - ✅ **Ollama Qwen 2.5** (implementado, local)
-  - ✅ **OpenRouter** (implementado)
+  - ✅ **Anthropic Claude Sonnet 4.5**
+  - ✅ **Anthropic Claude Sonnet 4.6**
+  - ✅ **Anthropic Claude Opus 4.5**
+  - ✅ **Anthropic Claude Opus 4.6**
+  - ✅ **OpenAI GPT-5.2-Codex**
+  - ✅ **OpenAI GPT-5.3-Codex**
+  - ✅ **Google Gemini 3 Flash**
+  - ✅ **Google Gemini 3 Pro**
+  - ✅ **Google Gemini 3.1 Pro**
+  - ✅ **Ollama Llama 3.2** (local)
+  - ✅ **Ollama Qwen 2.5** (local)
+  - ✅ **OpenRouter**
 
-## Dependencias
+## Dependencies
 
 ### Kubuntu 2026.04 / Ubuntu 24.04+
 
@@ -48,7 +48,7 @@ sudo apt install geany geany-plugins-common
 sudo apt install libsoup-3.0-dev libjansson-dev
 ```
 
-**Nota:** En Ubuntu/Kubuntu, los headers de desarrollo de Geany están incluidos en el paquete `geany`, no existe un paquete `libgeany-dev` separado.
+**Nota:** En Ubuntu / Kubuntu, los headers de desarrollo de Geany están incluidos en el paquete `geany`, no existe un paquete `libgeany-dev` separado.
 
 ### Manjaro / Arch Linux
 
@@ -75,22 +75,22 @@ sudo dnf install geany geany-devel gtk3-devel glib2-devel
 sudo dnf install libsoup3-devel jansson-devel
 ```
 
-## Compilación
+## Compilation
 
 ```bash
-# Generar archivos de build
+# Generate build files
 ./bootstrap.sh
 
-# Configurar
+# Configure
 ./configure
 
-# Compilar
+# Compile
 make
 
-# Opción 1: Instalar en el sistema (requiere sudo)
+# Option 1: Install to system (requires sudo)
 sudo make install
 
-# Opción 2: Copiar manualmente al directorio de usuario (recomendado)
+# Option 2: Copy manually to user directory (recommended)
 mkdir -p ~/.config/geany/plugins
 cp src/.libs/lumila-ai.so ~/.config/geany/plugins/
 ```
@@ -102,30 +102,30 @@ cp src/.libs/lumila-ai.so ~/.config/geany/plugins/
 ### Alternativa si libsoup3 no está disponible
 
 ```bash
-# Ubuntu/Kubuntu
+# Ubuntu / Kubuntu
 sudo apt install libsoup2.4-dev
 
-# Manjaro/Arch
+# Manjaro / Arch
 sudo pacman -S libsoup
 
 # Fedora
 sudo dnf install libsoup-devel
 ```
 
-## Configuración
+## Configuration
 
-El archivo de configuración se crea automáticamente en:
+El archivo de configuración se crea de forma automática en:
 `~/.config/geany/plugins/lumila-ai/config.json`
 
 Puedes usar el archivo `config-example.json` como plantilla.
 
-### Configuración de API Keys
+### Configuration of API Keys
 
 Edita el archivo `config.json` y agrega tus API keys y configuraciones:
 
 ```json
 {
-  "version": "0.1.0",
+  "version": "0.3.0",
   "api_keys": {
     "openai": "",
     "anthropic": "sk-ant-api03-...",
@@ -143,25 +143,24 @@ Edita el archivo `config.json` y agrega tus API keys y configuraciones:
 }
 ```
 
-### Parámetros de configuración
+### Configuration Parameters
 
 - **temperature**: Controla la aleatoriedad de las respuestas (0.0 = determinista, 2.0 = muy creativo)
 - **max_tokens**: Número máximo de tokens en la respuesta (100-8000)
 - **top_p**: Muestreo nucleus para diversidad de respuestas (0.0-1.0)
 - **default_provider_id**: Modelo por defecto al iniciar (0-11, default: 11 = OpenRouter)
-  - 0-3: Claude Sonnet/Opus 4.5/4.6
+  - 0-3: Claude Sonnet / Opus 4.5/4.6
   - 4-5: GPT-5.2/5.3-Codex
-  - 6-8: Gemini 3 Flash/Pro/3.1 Pro
-  - 9-10: Ollama Llama 3.2/Qwen 2.5
+  - 6-8: Gemini 3 Flash / Pro / 3.1 Pro
+  - 9-10: Ollama Llama 3.2 / Qwen 2.5
   - 11: OpenRouter
 
-### Obtener API Keys
+### Getting API Keys
 
 - **Anthropic Claude**: https://console.anthropic.com/settings/keys
   - Modelos: Claude Sonnet 4.5, 4.6, Opus 4.5, 4.6
 
 - **OpenAI**: https://platform.openai.com/api-keys
-  - Nuevas cuentas: $5 USD de créditos gratuitos
   - Modelos: GPT-5.2-Codex, GPT-5.3-Codex
 
 - **Google Gemini**: https://makersuite.google.com/app/apikey
@@ -177,7 +176,7 @@ Edita el archivo `config.json` y agrega tus API keys y configuraciones:
   - Acceso a múltiples modelos con una sola API key
   - Modelo por defecto: Claude 3.5 Sonnet vía OpenRouter
 
-## Uso
+## Usage
 
 1. **Instala el plugin** (ver sección Compilación)
 2. **Configura tu API key** en `~/.config/geany/plugins/lumila-ai/config.json`
@@ -189,7 +188,7 @@ Edita el archivo `config.json` y agrega tus API keys y configuraciones:
 4. Ve a **Herramientas → Administrador de complementos** y activa "Lumila AI"
 5. Aparecerá un panel lateral "Lumila" en la barra lateral
 6. Selecciona el modelo deseado en el selector:
-   - **Claude Sonnet 4.5** (por defecto)
+   - Claude Sonnet 4.5
    - Claude Sonnet 4.6
    - Claude Opus 4.5
    - Claude Opus 4.6
@@ -200,10 +199,10 @@ Edita el archivo `config.json` y agrega tus API keys y configuraciones:
    - Gemini 3.1 Pro
    - Ollama Llama 3.2 (local, gratis)
    - Ollama Qwen 2.5 (local, gratis)
-   - OpenRouter
+   - **OpenRouter** (por defecto)
 7. Escribe tu mensaje y presiona "Send"
 
-### Solución de problemas
+### Troubleshooting
 
 **Error: "API key not configured"**
 - Verifica que el archivo `config.json` existe y tiene tu API key
@@ -218,6 +217,6 @@ Edita el archivo `config.json` y agrega tus API keys y configuraciones:
 - Intenta copiar también a `~/.local/share/geany/plugins/`
 - Como última opción: `sudo make install` para instalar en el sistema
 
-## Licencia
+## License
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
