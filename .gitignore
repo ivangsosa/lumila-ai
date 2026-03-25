@@ -1,0 +1,35 @@
+# Build artifacts
+*.o
+*.lo
+*.la
+*.so
+.libs/
+.deps/
+*.log
+*.status
+stamp-h1
+
+# Autotools
+Makefile
+Makefile.in
+aclocal.m4
+autom4te.cache/
+build-aux/
+config.h
+config.h.in
+configure
+libtool
+m4/
+
+# User config (no subir API keys)
+config.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db

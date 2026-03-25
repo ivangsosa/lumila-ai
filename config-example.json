@@ -1,0 +1,17 @@
+{
+  "version": "0.3.0",
+  "api_keys": {
+    "openai": "",
+    "anthropic": "",
+    "google": "",
+    "kimi": "",
+    "openrouter": "",
+    "ollama": ""
+  },
+  "defaults": {
+    "temperature": 0.7,
+    "max_tokens": 1024,
+    "top_p": 1.0,
+    "default_provider_id": 11
+  }
+}
