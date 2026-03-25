@@ -33,9 +33,10 @@ void lumila_config_init(void)
         json_object_set_new(root, "api_keys", keys);
 
         json_t *defaults = json_object();
-        json_object_set_new(defaults, "temperature", json_real(0.7));
+        json_object_set_new(defaults, "temperature", json_real(0.2));
         json_object_set_new(defaults, "max_tokens", json_integer(1024));
-        json_object_set_new(defaults, "top_p", json_real(1.0));
+        json_object_set_new(defaults, "top_p", json_real(0.9));
+        json_object_set_new(defaults, "repeat_penalty", json_real(1.1));
         json_object_set_new(defaults, "default_provider_id", json_integer(11));
         json_object_set_new(root, "defaults", defaults);
     }
@@ -127,6 +128,21 @@ gdouble lumila_config_get_top_p(void)
     }
 
     return 1.0;
+}
+
+gdouble lumila_config_get_repeat_penalty(void)
+{
+    if (!config_root) return 1.1;
+
+    json_t *defaults = json_object_get(config_root, "defaults");
+    if (!defaults) return 1.1;
+
+    json_t *repeat = json_object_get(defaults, "repeat_penalty");
+    if (repeat && json_is_real(repeat)) {
+        return json_real_value(repeat);
+    }
+
+    return 1.1;
 }
 
 gint lumila_config_get_default_provider(void)

@@ -183,6 +183,7 @@ static void openrouter_send_message(LumilaProvider *provider, const gchar *messa
     json_object_set_new(root, "max_tokens", json_integer(lumila_config_get_max_tokens()));
     json_object_set_new(root, "temperature", json_real(lumila_config_get_temperature()));
     json_object_set_new(root, "top_p", json_real(lumila_config_get_top_p()));
+    json_object_set_new(root, "frequency_penalty", json_real(lumila_config_get_repeat_penalty() - 1.0));
 
     json_t *messages = json_array();
     json_t *msg_obj = json_object();

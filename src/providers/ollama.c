@@ -185,6 +185,7 @@ static void ollama_send_message(LumilaProvider *provider, const gchar *message,
     json_object_set_new(options, "temperature", json_real(lumila_config_get_temperature()));
     json_object_set_new(options, "num_predict", json_integer(lumila_config_get_max_tokens()));
     json_object_set_new(options, "top_p", json_real(lumila_config_get_top_p()));
+    json_object_set_new(options, "repeat_penalty", json_real(lumila_config_get_repeat_penalty()));
     json_object_set_new(root, "options", options);
 
     gchar *json_body = json_dumps(root, 0);
