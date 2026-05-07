@@ -1,8 +1,10 @@
 #include "chat.h"
 #include "chat_ui.h"
 #include "providers/provider.h"
+#include "providers/model_registry.h"
 #include "config.h"
 #include "plugin.h"
+#include "sidebar.h"
 #include <geanyplugin.h>
 #include <string.h>
 #include <time.h>
@@ -28,28 +30,10 @@ void lumila_chat_init(void)
     // Get default provider from config
     current_provider_id = lumila_config_get_default_provider();
 
-    // Map provider_id to type and model_id
-    LumilaProviderType type;
-    gint model_id = 0;
+    const LumilaModelEntry *entry = lumila_model_registry_lookup(current_provider_id);
 
-    switch (current_provider_id) {
-        case 0: type = LUMILA_PROVIDER_ANTHROPIC; model_id = 0; break;
-        case 1: type = LUMILA_PROVIDER_ANTHROPIC; model_id = 1; break;
-        case 2: type = LUMILA_PROVIDER_ANTHROPIC; model_id = 2; break;
-        case 3: type = LUMILA_PROVIDER_ANTHROPIC; model_id = 3; break;
-        case 4: type = LUMILA_PROVIDER_OPENAI; model_id = 0; break;
-        case 5: type = LUMILA_PROVIDER_OPENAI; model_id = 1; break;
-        case 6: type = LUMILA_PROVIDER_GOOGLE; model_id = 0; break;
-        case 7: type = LUMILA_PROVIDER_GOOGLE; model_id = 1; break;
-        case 8: type = LUMILA_PROVIDER_GOOGLE; model_id = 2; break;
-        case 9: type = LUMILA_PROVIDER_OLLAMA; model_id = 0; break;
-        case 10: type = LUMILA_PROVIDER_OLLAMA; model_id = 1; break;
-        case 11: type = LUMILA_PROVIDER_OPENROUTER; model_id = 0; break;
-        default: type = LUMILA_PROVIDER_OPENROUTER; model_id = 0; break;
-    }
-
-    current_provider = lumila_provider_create(type);
-    current_provider->model_id = model_id;
+    current_provider = lumila_provider_create(entry->type);
+    current_provider->model_id = entry->model_index;
 
     // Create history directory
     const gchar *config_dir = geany->app->configdir;
@@ -115,19 +99,22 @@ static gchar *get_current_timestamp(void)
 static gchar *get_open_files_context(void)
 {
     GString *context = g_string_new("");
-    GeanyDocument *doc = document_get_current();
+    GeanyDocument *doc;
+    gint i = 0;
 
-    if (doc && doc->file_name) {
-        // Get filename
-        const gchar *filename = g_path_get_basename(doc->file_name);
+    while ((doc = document_index(i)) != NULL) {
+        if (doc->file_name && doc->editor && doc->editor->sci) {
+            gchar *filename = g_path_get_basename(doc->file_name);
+            const gchar *content = sci_get_contents(doc->editor->sci, -1);
 
-        // Get file content
-        const gchar *content = sci_get_contents(doc->editor->sci, -1);
+            if (content && *content) {
+                g_string_append_printf(context, "\n\n[Archivo abierto: %s]\n```\n%s\n```\n",
+                                       filename, content);
+            }
 
-        if (content && *content) {
-            g_string_append_printf(context, "\n\n[Archivo abierto: %s]\n```\n%s\n```\n", 
-                                   filename, content);
+            g_free(filename);
         }
+        i++;
     }
 
     gchar *result = g_string_free(context, FALSE);
@@ -149,6 +136,38 @@ static void on_response_received(const gchar *response, gpointer user_data)
     } else {
         append_message_to_view("assistant", "Error: Failed to get response");
     }
+
+    lumila_sidebar_set_status(NULL);
+    lumila_sidebar_set_input_sensitive(TRUE);
+}
+
+void lumila_chat_cancel_request(void)
+{
+    if (current_provider) {
+        lumila_provider_cancel(current_provider);
+    }
+
+    lumila_sidebar_set_status(NULL);
+    lumila_sidebar_set_input_sensitive(TRUE);
+}
+
+static gchar *build_history_context(void)
+{
+    if (!messages || messages->len == 0) return g_strdup("");
+
+    GString *history = g_string_new("");
+
+    /* Do not include the very last message (the one being sent now) */
+    for (guint i = 0; i < messages->len - 1; i++) {
+        ChatMessage *msg = &g_array_index(messages, ChatMessage, i);
+        if (g_str_equal(msg->role, "user")) {
+            g_string_append_printf(history, "User: %s\n", msg->content);
+        } else {
+            g_string_append_printf(history, "Assistant: %s\n", msg->content);
+        }
+    }
+
+    return g_string_free(history, FALSE);
 }
 
 void lumila_chat_send_message(const gchar *message)
@@ -167,22 +186,32 @@ void lumila_chat_send_message(const gchar *message)
     // Get context from open files
     gchar *files_context = get_open_files_context();
 
-    // Build complete message with context
+    // Build conversation history context
+    gchar *history = build_history_context();
+
+    // Build complete message with history and file context
     gchar *complete_message;
 
-    if (files_context && *files_context) {
-        complete_message = g_strdup_printf("%s%s", message, files_context);
+    if ((history && *history) && (files_context && *files_context)) {
+        complete_message = g_strdup_printf("%s\n%s\n%s", history, files_context, message);
+    } else if (history && *history) {
+        complete_message = g_strdup_printf("%s\n%s", history, message);
+    } else if (files_context && *files_context) {
+        complete_message = g_strdup_printf("%s\n%s", files_context, message);
     } else {
         complete_message = g_strdup(message);
     }
 
     // Send to provider
     if (current_provider) {
+        lumila_sidebar_set_status(_("Thinking..."));
+        lumila_sidebar_set_input_sensitive(FALSE);
         lumila_provider_send_message(current_provider, complete_message, on_response_received, NULL);
     }
 
     g_free(complete_message);
     g_free(files_context);
+    g_free(history);
 }
 
 void lumila_chat_set_provider(gint provider_id)
@@ -193,27 +222,10 @@ void lumila_chat_set_provider(gint provider_id)
         lumila_provider_free(current_provider);
     }
 
-    LumilaProviderType type;
-    gint model_id = 0;
+    const LumilaModelEntry *entry = lumila_model_registry_lookup(provider_id);
 
-    switch (provider_id) {
-        case 0: type = LUMILA_PROVIDER_ANTHROPIC; model_id = 0; break;    // Claude Sonnet 4.5
-        case 1: type = LUMILA_PROVIDER_ANTHROPIC; model_id = 1; break;    // Claude Sonnet 4.6
-        case 2: type = LUMILA_PROVIDER_ANTHROPIC; model_id = 2; break;    // Claude Opus 4.5
-        case 3: type = LUMILA_PROVIDER_ANTHROPIC; model_id = 3; break;    // Claude Opus 4.6
-        case 4: type = LUMILA_PROVIDER_OPENAI; model_id = 0; break;       // GPT-5.2-Codex
-        case 5: type = LUMILA_PROVIDER_OPENAI; model_id = 1; break;       // GPT-5.3-Codex
-        case 6: type = LUMILA_PROVIDER_GOOGLE; model_id = 0; break;       // Gemini 3 Flash
-        case 7: type = LUMILA_PROVIDER_GOOGLE; model_id = 1; break;       // Gemini 3 Pro
-        case 8: type = LUMILA_PROVIDER_GOOGLE; model_id = 2; break;       // Gemini 3.1 Pro
-        case 9: type = LUMILA_PROVIDER_OLLAMA; model_id = 0; break;       // Ollama Llama 3.2
-        case 10: type = LUMILA_PROVIDER_OLLAMA; model_id = 1; break;      // Ollama Qwen 2.5
-        case 11: type = LUMILA_PROVIDER_OPENROUTER; model_id = 0; break;  // OpenRouter
-        default: type = LUMILA_PROVIDER_ANTHROPIC; model_id = 0; break;
-    }
-
-    current_provider = lumila_provider_create(type);
-    current_provider->model_id = model_id;
+    current_provider = lumila_provider_create(entry->type);
+    current_provider->model_id = entry->model_index;
 }
 
 void lumila_chat_save_history(void)

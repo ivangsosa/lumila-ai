@@ -188,14 +188,13 @@ static void google_send_message(LumilaProvider *provider, const gchar *message,
     // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "gemini-3-flash"; break;     // Gemini 3 Flash
-        case 1: model_name = "gemini-3-pro"; break;       // Gemini 3 Pro
-        case 2: model_name = "gemini-3.1-pro"; break;     // Gemini 3.1 Pro
-        default: model_name = "gemini-3-flash"; break;
+        case 0: model_name = "gemini-1.5-flash"; break;  // Gemini 1.5 Flash
+        case 1: model_name = "gemini-1.5-pro"; break;   // Gemini 1.5 Pro
+        default: model_name = "gemini-1.5-flash"; break;
     }
 
-    // Build URL with model and API key
-    gchar *url = g_strdup_printf("%s%s:generateContent?key=%s", GOOGLE_API_BASE, model_name, api_key);
+    // Build URL (API key sent via header for security)
+    gchar *url = g_strdup_printf("%s%s:generateContent", GOOGLE_API_BASE, model_name);
 
     // Build JSON request for Gemini API
     json_t *root = json_object();
@@ -226,6 +225,7 @@ static void google_send_message(LumilaProvider *provider, const gchar *message,
     SoupMessage *msg = soup_message_new("POST", url);
 
     soup_message_headers_append(soup_message_get_request_headers(msg), "Content-Type", "application/json");
+    soup_message_headers_append(soup_message_get_request_headers(msg), "x-goog-api-key", api_key);
 
     soup_message_set_request_body_from_bytes(msg, "application/json", g_bytes_new(json_body, strlen(json_body)));
     g_free(json_body);
@@ -239,6 +239,7 @@ static void google_send_message(LumilaProvider *provider, const gchar *message,
     SoupMessage *msg = soup_message_new("POST", url);
 
     soup_message_headers_append(msg->request_headers, "Content-Type", "application/json");
+    soup_message_headers_append(msg->request_headers, "x-goog-api-key", api_key);
 
     soup_message_body_append(msg->request_body, SOUP_MEMORY_COPY, json_body, strlen(json_body));
     g_free(json_body);

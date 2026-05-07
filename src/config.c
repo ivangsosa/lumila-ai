@@ -27,17 +27,17 @@ void lumila_config_init(void)
 
     if (!root) {
         root = json_object();
-        json_object_set_new(root, "version", json_string("0.1.0"));
+        json_object_set_new(root, "version", json_string("0.4.0"));
 
         json_t *keys = json_object();
         json_object_set_new(root, "api_keys", keys);
 
         json_t *defaults = json_object();
-        json_object_set_new(defaults, "temperature", json_real(0.2));
+        json_object_set_new(defaults, "temperature", json_real(0.7));
         json_object_set_new(defaults, "max_tokens", json_integer(1024));
-        json_object_set_new(defaults, "top_p", json_real(0.9));
+        json_object_set_new(defaults, "top_p", json_real(1.0));
         json_object_set_new(defaults, "repeat_penalty", json_real(1.1));
-        json_object_set_new(defaults, "default_provider_id", json_integer(11));
+        json_object_set_new(defaults, "default_provider_id", json_integer(8));
         json_object_set_new(root, "defaults", defaults);
     }
 
@@ -147,15 +147,15 @@ gdouble lumila_config_get_repeat_penalty(void)
 
 gint lumila_config_get_default_provider(void)
 {
-    if (!config_root) return 11; // OpenRouter por defecto
+    if (!config_root) return 8; // OpenRouter por defecto
 
     json_t *defaults = json_object_get(config_root, "defaults");
-    if (!defaults) return 11;
+    if (!defaults) return 8;
 
     json_t *provider = json_object_get(defaults, "default_provider_id");
     if (provider && json_is_integer(provider)) {
         return json_integer_value(provider);
     }
-    
-    return 11; // OpenRouter por defecto
+
+    return 8; // OpenRouter por defecto
 }

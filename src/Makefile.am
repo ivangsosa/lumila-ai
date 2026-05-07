@@ -2,7 +2,6 @@ plugin_LTLIBRARIES = lumila-ai.la
 
 lumila_ai_la_SOURCES = \
 	main.c \
-	plugin.c \
 	plugin.h \
 	sidebar.c \
 	sidebar.h \
@@ -14,6 +13,8 @@ lumila_ai_la_SOURCES = \
 	config.h \
 	providers/provider.c \
 	providers/provider.h \
+	providers/model_registry.c \
+	providers/model_registry.h \
 	providers/openai.c \
 	providers/openai.h \
 	providers/anthropic.c \

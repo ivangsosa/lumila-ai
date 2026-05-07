@@ -9,10 +9,10 @@ GeanyData *geany_data;
 
 PLUGIN_VERSION_CHECK(247)
 
-PLUGIN_SET_INFO("Lumila AI", 
+PLUGIN_SET_INFO("Lumila AI",
                 "AI Assistant for Geany - Multi-provider chat",
-                "0.1.0",
-                "Your Name")
+                "0.4.0",
+                "Iván Gabriel Sosa")
 
 static gboolean lumila_init(GeanyPlugin *plugin, gpointer pdata)
 {
@@ -42,7 +42,7 @@ void geany_load_module(GeanyPlugin *plugin)
     geany_plugin = plugin;
     plugin->info->name = "Lumila AI";
     plugin->info->description = "AI Assistant for Geany - Multi-provider chat";
-    plugin->info->version = "0.1.0";
+    plugin->info->version = "0.4.0";
     plugin->info->author = "Iván Gabriel Sosa";
 
     plugin->funcs->init = lumila_init;

@@ -183,9 +183,9 @@ static void openai_send_message(LumilaProvider *provider, const gchar *message,
     // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "gpt-5.2-codex"; break;  // GPT-5.2-Codex
-        case 1: model_name = "gpt-5.3-codex"; break;  // GPT-5.3-Codex
-        default: model_name = "gpt-5.2-codex"; break;
+        case 0: model_name = "gpt-4o"; break;       // GPT-4o
+        case 1: model_name = "gpt-4o-mini"; break;  // GPT-4o mini
+        default: model_name = "gpt-4o"; break;
     }
 
     json_object_set_new(root, "model", json_string(model_name));

@@ -8,6 +8,9 @@ static GtkWidget *sidebar_widget = NULL;
 static GtkWidget *chat_view = NULL;
 static GtkWidget *input_view = NULL;
 static GtkWidget *provider_combo = NULL;
+static GtkWidget *status_label = NULL;
+static GtkWidget *send_button = NULL;
+static GtkWidget *cancel_button = NULL;
 
 static void on_send_clicked(GtkButton *button, gpointer user_data)
 {
@@ -42,6 +45,14 @@ static void on_new_chat_clicked(GtkButton *button, gpointer user_data)
     lumila_chat_new_conversation();
 }
 
+static void on_cancel_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+    (void)user_data;
+
+    lumila_sidebar_cancel_request();
+}
+
 void lumila_sidebar_init(void)
 {
     sidebar_widget = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
@@ -52,15 +63,12 @@ void lumila_sidebar_init(void)
     gtk_box_pack_start(GTK_BOX(sidebar_widget), provider_label, FALSE, FALSE, 0);
 
     provider_combo = gtk_combo_box_text_new();
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Claude Sonnet 4.5");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Claude Sonnet 4.6");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Claude Opus 4.5");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Claude Opus 4.6");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "GPT-5.2-Codex");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "GPT-5.3-Codex");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Gemini 3 Flash");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Gemini 3 Pro");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Gemini 3.1 Pro");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Claude 3.5 Sonnet");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Claude 3 Opus");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "GPT-4o");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "GPT-4o mini");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Gemini 1.5 Flash");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Gemini 1.5 Pro");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Ollama Llama 3.2");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Ollama Qwen 2.5");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "OpenRouter");
@@ -96,6 +104,11 @@ void lumila_sidebar_init(void)
     gtk_container_add(GTK_CONTAINER(input_scrolled), input_view);
     gtk_box_pack_start(GTK_BOX(sidebar_widget), input_scrolled, FALSE, FALSE, 0);
 
+    // Status label
+    status_label = gtk_label_new("");
+    gtk_widget_set_no_show_all(status_label, TRUE);
+    gtk_box_pack_start(GTK_BOX(sidebar_widget), status_label, FALSE, FALSE, 0);
+
     // Buttons container
     GtkWidget *buttons_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
 
@@ -105,9 +118,15 @@ void lumila_sidebar_init(void)
     gtk_box_pack_start(GTK_BOX(buttons_box), new_chat_button, TRUE, TRUE, 0);
 
     // Send button
-    GtkWidget *send_button = gtk_button_new_with_label(_("Send"));
+    send_button = gtk_button_new_with_label(_("Send"));
     g_signal_connect(send_button, "clicked", G_CALLBACK(on_send_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(buttons_box), send_button, TRUE, TRUE, 0);
+
+    // Cancel button
+    cancel_button = gtk_button_new_with_label(_("Cancel"));
+    g_signal_connect(cancel_button, "clicked", G_CALLBACK(on_cancel_clicked), NULL);
+    gtk_widget_set_sensitive(cancel_button, FALSE);
+    gtk_box_pack_start(GTK_BOX(buttons_box), cancel_button, TRUE, TRUE, 0);
 
     gtk_box_pack_start(GTK_BOX(sidebar_widget), buttons_box, FALSE, FALSE, 0);
 
@@ -134,4 +153,34 @@ void lumila_sidebar_cleanup(void)
 GtkWidget *lumila_sidebar_get_widget(void)
 {
     return sidebar_widget;
+}
+
+void lumila_sidebar_set_status(const gchar *status)
+{
+    if (!status_label) return;
+
+    if (status && *status) {
+        gtk_label_set_text(GTK_LABEL(status_label), status);
+        gtk_widget_show(status_label);
+    } else {
+        gtk_widget_hide(status_label);
+    }
+}
+
+void lumila_sidebar_set_input_sensitive(gboolean sensitive)
+{
+    if (input_view) {
+        gtk_widget_set_sensitive(input_view, sensitive);
+    }
+    if (send_button) {
+        gtk_widget_set_sensitive(send_button, sensitive);
+    }
+    if (cancel_button) {
+        gtk_widget_set_sensitive(cancel_button, !sensitive);
+    }
+}
+
+void lumila_sidebar_cancel_request(void)
+{
+    lumila_chat_cancel_request();
 }

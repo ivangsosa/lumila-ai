@@ -17,15 +17,12 @@ AI Assistant plugin for Geany editor with multi-provider support.
   - Botón "New Chat" para iniciar nueva conversación
   - Contexto multi-mensaje enviado a los modelos
 - **Múltiples proveedores de IA**:
-  - ✅ **Anthropic Claude Sonnet 4.5**
-  - ✅ **Anthropic Claude Sonnet 4.6**
-  - ✅ **Anthropic Claude Opus 4.5**
-  - ✅ **Anthropic Claude Opus 4.6**
-  - ✅ **OpenAI GPT-5.2-Codex**
-  - ✅ **OpenAI GPT-5.3-Codex**
-  - ✅ **Google Gemini 3 Flash**
-  - ✅ **Google Gemini 3 Pro**
-  - ✅ **Google Gemini 3.1 Pro**
+  - ✅ **Anthropic Claude 3.5 Sonnet**
+  - ✅ **Anthropic Claude 3 Opus**
+  - ✅ **OpenAI GPT-4o**
+  - ✅ **OpenAI GPT-4o mini**
+  - ✅ **Google Gemini 1.5 Flash**
+  - ✅ **Google Gemini 1.5 Pro**
   - ✅ **Ollama Llama 3.2** (local)
   - ✅ **Ollama Qwen 2.5** (local)
   - ✅ **OpenRouter**
@@ -125,7 +122,7 @@ Edita el archivo `config.json` y agrega tus API keys y configuraciones:
 
 ```json
 {
-  "version": "0.3.0",
+  "version": "0.4.0",
   "api_keys": {
     "openai": "",
     "anthropic": "sk-ant-api03-...",
@@ -138,7 +135,7 @@ Edita el archivo `config.json` y agrega tus API keys y configuraciones:
     "temperature": 0.7,
     "max_tokens": 1024,
     "top_p": 1.0,
-    "default_provider_id": 11
+    "default_provider_id": 8
   }
 }
 ```
@@ -148,23 +145,23 @@ Edita el archivo `config.json` y agrega tus API keys y configuraciones:
 - **temperature**: Controla la aleatoriedad de las respuestas (0.0 = determinista, 2.0 = muy creativo)
 - **max_tokens**: Número máximo de tokens en la respuesta (100-8000)
 - **top_p**: Muestreo nucleus para diversidad de respuestas (0.0-1.0)
-- **default_provider_id**: Modelo por defecto al iniciar (0-11, default: 11 = OpenRouter)
-  - 0-3: Claude Sonnet / Opus 4.5/4.6
-  - 4-5: GPT-5.2/5.3-Codex
-  - 6-8: Gemini 3 Flash / Pro / 3.1 Pro
-  - 9-10: Ollama Llama 3.2 / Qwen 2.5
-  - 11: OpenRouter
+- **default_provider_id**: Modelo por defecto al iniciar (0-8, default: 8 = OpenRouter)
+  - 0-1: Claude 3.5 Sonnet / Claude 3 Opus
+  - 2-3: GPT-4o / GPT-4o mini
+  - 4-5: Gemini 1.5 Flash / Gemini 1.5 Pro
+  - 6-7: Ollama Llama 3.2 / Qwen 2.5
+  - 8: OpenRouter
 
 ### Getting API Keys
 
 - **Anthropic Claude**: https://console.anthropic.com/settings/keys
-  - Modelos: Claude Sonnet 4.5, 4.6, Opus 4.5, 4.6
+  - Modelos: Claude 3.5 Sonnet, Claude 3 Opus
 
 - **OpenAI**: https://platform.openai.com/api-keys
-  - Modelos: GPT-5.2-Codex, GPT-5.3-Codex
+  - Modelos: GPT-4o, GPT-4o mini
 
 - **Google Gemini**: https://makersuite.google.com/app/apikey
-  - Modelos: Gemini 3 Flash, Gemini 3 Pro, Gemini 3.1 Pro
+  - Modelos: Gemini 1.5 Flash, Gemini 1.5 Pro
 
 - **Ollama**: Local, sin API key necesaria
   - Instalación: `curl -fsSL https://ollama.com/install.sh | sh`
