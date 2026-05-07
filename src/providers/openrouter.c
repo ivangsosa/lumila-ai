@@ -204,11 +204,15 @@ static void openrouter_send_message(LumilaProvider *provider, const gchar *messa
     soup_message_headers_append(soup_message_get_request_headers(msg), "Authorization", auth_header);
     g_free(auth_header);
 
+    /* OpenRouter requires these headers for app identification */
+    soup_message_headers_append(soup_message_get_request_headers(msg), "HTTP-Referer", "https://github.com/ivangsosa/lumila-ai");
+    soup_message_headers_append(soup_message_get_request_headers(msg), "X-Title", "Lumila AI");
+
     soup_message_set_request_body_from_bytes(msg, "application/json", g_bytes_new(json_body, strlen(json_body)));
     g_free(json_body);
 
     // Send async
-    soup_session_send_and_read_async(provider->session, msg, G_PRIORITY_DEFAULT, 
+    soup_session_send_and_read_async(provider->session, msg, G_PRIORITY_DEFAULT,
                                       provider->cancellable, on_message_sent, provider);
     g_object_unref(msg);
 #else
@@ -219,6 +223,10 @@ static void openrouter_send_message(LumilaProvider *provider, const gchar *messa
     gchar *auth_header = g_strdup_printf("Bearer %s", api_key);
     soup_message_headers_append(msg->request_headers, "Authorization", auth_header);
     g_free(auth_header);
+
+    /* OpenRouter requires these headers for app identification */
+    soup_message_headers_append(msg->request_headers, "HTTP-Referer", "https://github.com/ivangsosa/lumila-ai");
+    soup_message_headers_append(msg->request_headers, "X-Title", "Lumila AI");
 
     soup_message_body_append(msg->request_body, SOUP_MEMORY_COPY, json_body, strlen(json_body));
     g_free(json_body);
