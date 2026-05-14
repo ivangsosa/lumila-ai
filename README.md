@@ -8,6 +8,10 @@ AI Assistant plugin for Geany editor with multi-provider support.
   - Fondo negro con mensajes estilo burbujas
   - Mensajes del usuario alineados a la derecha
   - Respuestas de la IA alineadas a la izquierda
+- **Edición de archivos por IA**: La IA puede modificar archivos abiertos directamente
+  - Usa el formato ```file:nombre.ext para editar
+  - Crea archivos nuevos si no existen
+  - Resumen de cambios en el chat
 - **Configuraciones avanzadas**:
   - Temperatura (0.0 - 2.0, default: 0.7)
   - Max tokens (100 - 8000, default: 1024)
@@ -25,7 +29,7 @@ AI Assistant plugin for Geany editor with multi-provider support.
   - ✅ **Google Gemini 1.5 Pro**
   - ✅ **Ollama Llama 3.2** (local)
   - ✅ **Ollama Qwen 2.5** (local)
-  - ✅ **OpenRouter**
+  - ✅ **OpenRouter** (modelos gratuitos)
 
 ## Dependencies
 
@@ -122,7 +126,7 @@ Edita el archivo `config.json` y agrega tus API keys y configuraciones:
 
 ```json
 {
-  "version": "0.4.0",
+  "version": "0.5.0",
   "api_keys": {
     "openai": "",
     "anthropic": "sk-ant-api03-...",
@@ -171,7 +175,7 @@ Edita el archivo `config.json` y agrega tus API keys y configuraciones:
 
 - **OpenRouter**: https://openrouter.ai/keys
   - Acceso a múltiples modelos con una sola API key
-  - Modelo por defecto: Claude 3.5 Sonnet vía OpenRouter
+  - Modelo por defecto: `openrouter/free` (modelos gratuitos)
 
 ## Usage
 
@@ -185,29 +189,37 @@ Edita el archivo `config.json` y agrega tus API keys y configuraciones:
 4. Ve a **Herramientas → Administrador de complementos** y activa "Lumila AI"
 5. Aparecerá un panel lateral "Lumila" en la barra lateral
 6. Selecciona el modelo deseado en el selector:
-   - Claude Sonnet 4.5
-   - Claude Sonnet 4.6
-   - Claude Opus 4.5
-   - Claude Opus 4.6
-   - GPT-5.2-Codex
-   - GPT-5.3-Codex
-   - Gemini 3 Flash
-   - Gemini 3 Pro
-   - Gemini 3.1 Pro
+   - Claude 3.5 Sonnet
+   - Claude 3 Opus
+   - GPT-4o
+   - GPT-4o mini
+   - Gemini 1.5 Flash
+   - Gemini 1.5 Pro
    - Ollama Llama 3.2 (local, gratis)
    - Ollama Qwen 2.5 (local, gratis)
-   - **OpenRouter** (por defecto)
+   - **OpenRouter** (por defecto, modelos gratuitos)
 7. Escribe tu mensaje y presiona "Send"
+
+### Edición de archivos
+
+Para que la IA modifique un archivo, simplemente pedile que lo haga. La IA responderá con bloques de código anotados:
+
+\`\`\`file:main.c
+#include <stdio.h>
+int main() { return 0; }
+\`\`\`
+
+El plugin detectará estos bloques y:
+- Si el archivo está abierto: **reemplaza su contenido** en el editor
+- Si no existe: **crea un nuevo archivo** sin título
+
+Podés editar múltiples archivos en una sola respuesta.
 
 ### Troubleshooting
 
 **Error: "API key not configured"**
 - Verifica que el archivo `config.json` existe y tiene tu API key
 - Reinicia Geany completamente después de editar el config
-
-**Error: "Your credit balance is too low"**
-- Tu cuenta de Anthropic necesita créditos o un método de pago
-- Ve a https://console.anthropic.com/settings/billing
 
 **El plugin no aparece en el administrador**
 - Verifica que `lumila-ai.so` está en `~/.config/geany/plugins/`
