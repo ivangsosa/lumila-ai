@@ -204,10 +204,10 @@ Edita el archivo `config.json` y agrega tus API keys y configuraciones:
 
 Para que la IA modifique un archivo, simplemente pedile que lo haga. La IA responderá con bloques de código anotados:
 
-\`\`\`file:main.c
+```file:main.c
 #include <stdio.h>
 int main() { return 0; }
-\`\`\`
+```
 
 El plugin detectará estos bloques y:
 - Si el archivo está abierto: **reemplaza su contenido** en el editor
