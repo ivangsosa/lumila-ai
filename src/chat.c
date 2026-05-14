@@ -10,6 +10,20 @@
 #include <time.h>
 #include <jansson.h>
 
+#define SYSTEM_PROMPT \
+    "[System: You are an AI coding assistant integrated into the Geany editor. " \
+    "You can directly edit open files. To edit a file, respond with a code block " \
+    "annotated with the file path like this:\n" \
+    "\n" \
+    "```file:filename.ext\n" \
+    "complete new file content here\n" \
+    "```\n" \
+    "\n" \
+    "This will REPLACE the entire content of that file in the editor. " \
+    "Only include files you actually want to modify. " \
+    "You can edit multiple files by including multiple ```file: blocks. " \
+    "Explain your changes before or after the code blocks.]\n\n"
+
 typedef struct {
     gchar *role;
     gchar *content;
@@ -121,18 +135,113 @@ static gchar *get_open_files_context(void)
     return result;
 }
 
+static gchar *apply_file_edits(const gchar *response)
+{
+    if (!response) return NULL;
+
+    GString *cleaned = g_string_new("");
+    GString *edit_summary = g_string_new("");
+    gchar **lines = g_strsplit(response, "\n", -1);
+    gboolean in_file_block = FALSE;
+    GString *file_code = NULL;
+    gchar *file_name = NULL;
+    gint edits_count = 0;
+
+    for (gint i = 0; lines[i] != NULL; i++) {
+        const gchar *line = lines[i];
+
+        if (!in_file_block && g_str_has_prefix(line, "```file:")) {
+            in_file_block = TRUE;
+            file_name = g_strdup(line + 8);
+            g_strstrip(file_name);
+            file_code = g_string_new("");
+            continue;
+        }
+
+        if (in_file_block && g_str_has_prefix(line, "```") && !g_str_has_prefix(line, "```file:")) {
+            in_file_block = FALSE;
+
+            GeanyDocument *target_doc = NULL;
+            GeanyDocument *doc;
+            gint j = 0;
+
+            while ((doc = document_index(j)) != NULL) {
+                if (doc->file_name && doc->editor && doc->editor->sci) {
+                    gchar *basename = g_path_get_basename(doc->file_name);
+                    if (g_strcmp0(basename, file_name) == 0) {
+                        target_doc = doc;
+                        g_free(basename);
+                        break;
+                    }
+                    g_free(basename);
+                }
+                j++;
+            }
+
+            if (target_doc) {
+                sci_set_text(target_doc->editor->sci, file_code->str);
+                g_string_append_printf(edit_summary, "\n✅ Edited: %s", file_name);
+                edits_count++;
+            } else {
+                GeanyDocument *new_doc = document_new_file(NULL, NULL, NULL);
+                if (new_doc && new_doc->editor && new_doc->editor->sci) {
+                    sci_set_text(new_doc->editor->sci, file_code->str);
+                    g_string_append_printf(edit_summary, "\n📄 Created: %s", file_name);
+                    edits_count++;
+                }
+            }
+
+            g_free(file_name);
+            file_name = NULL;
+            g_string_free(file_code, TRUE);
+            file_code = NULL;
+            continue;
+        }
+
+        if (in_file_block) {
+            if (file_code->len > 0) {
+                g_string_append_c(file_code, '\n');
+            }
+            g_string_append(file_code, line);
+        } else {
+            if (cleaned->len > 0) {
+                g_string_append_c(cleaned, '\n');
+            }
+            g_string_append(cleaned, line);
+        }
+    }
+
+    g_strfreev(lines);
+    g_free(file_name);
+    if (file_code) g_string_free(file_code, TRUE);
+
+    if (edits_count > 0) {
+        if (cleaned->len > 0) {
+            g_string_append(cleaned, "\n");
+        }
+        g_string_append(cleaned, edit_summary->str);
+    }
+
+    gchar *result = g_string_free(cleaned, FALSE);
+    g_string_free(edit_summary, TRUE);
+    return result;
+}
+
 static void on_response_received(const gchar *response, gpointer user_data)
 {
     (void)user_data;
 
     if (response) {
+        gchar *cleaned_response = apply_file_edits(response);
+
         ChatMessage msg = {
             .role = g_strdup("assistant"),
             .content = g_strdup(response),
             .timestamp = get_current_timestamp()
         };
         g_array_append_val(messages, msg);
-        append_message_to_view("assistant", response);
+        append_message_to_view("assistant", cleaned_response ? cleaned_response : response);
+        g_free(cleaned_response);
     } else {
         append_message_to_view("assistant", "Error: Failed to get response");
     }
@@ -189,17 +298,17 @@ void lumila_chat_send_message(const gchar *message)
     // Build conversation history context
     gchar *history = build_history_context();
 
-    // Build complete message with history and file context
+    // Build complete message with system prompt, history and file context
     gchar *complete_message;
 
     if ((history && *history) && (files_context && *files_context)) {
-        complete_message = g_strdup_printf("%s\n%s\n%s", history, files_context, message);
+        complete_message = g_strdup_printf("%s%s\n%s\n%s", SYSTEM_PROMPT, history, files_context, message);
     } else if (history && *history) {
-        complete_message = g_strdup_printf("%s\n%s", history, message);
+        complete_message = g_strdup_printf("%s%s\n%s", SYSTEM_PROMPT, history, message);
     } else if (files_context && *files_context) {
-        complete_message = g_strdup_printf("%s\n%s", files_context, message);
+        complete_message = g_strdup_printf("%s%s\n%s", SYSTEM_PROMPT, files_context, message);
     } else {
-        complete_message = g_strdup(message);
+        complete_message = g_strdup_printf("%s%s", SYSTEM_PROMPT, message);
     }
 
     // Send to provider
