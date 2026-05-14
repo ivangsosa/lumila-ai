@@ -179,7 +179,7 @@ static void openrouter_send_message(LumilaProvider *provider, const gchar *messa
 
     // Build JSON request (OpenAI-compatible format)
     json_t *root = json_object();
-    json_object_set_new(root, "model", json_string("anthropic/claude-3.5-sonnet"));
+    json_object_set_new(root, "model", json_string("openrouter/free"));
     json_object_set_new(root, "max_tokens", json_integer(lumila_config_get_max_tokens()));
     json_object_set_new(root, "temperature", json_real(lumila_config_get_temperature()));
     json_object_set_new(root, "top_p", json_real(lumila_config_get_top_p()));
