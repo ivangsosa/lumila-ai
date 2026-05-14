@@ -206,7 +206,7 @@ static void openrouter_send_message(LumilaProvider *provider, const gchar *messa
 
     /* OpenRouter requires these headers for app identification */
     soup_message_headers_append(soup_message_get_request_headers(msg), "HTTP-Referer", "https://github.com/ivangsosa/lumila-ai");
-    soup_message_headers_append(soup_message_get_request_headers(msg), "X-Title", "Lumila AI");
+    soup_message_headers_append(soup_message_get_request_headers(msg), "X-Title", LUMILA_NAME);
 
     soup_message_set_request_body_from_bytes(msg, "application/json", g_bytes_new(json_body, strlen(json_body)));
     g_free(json_body);
@@ -226,7 +226,7 @@ static void openrouter_send_message(LumilaProvider *provider, const gchar *messa
 
     /* OpenRouter requires these headers for app identification */
     soup_message_headers_append(msg->request_headers, "HTTP-Referer", "https://github.com/ivangsosa/lumila-ai");
-    soup_message_headers_append(msg->request_headers, "X-Title", "Lumila AI");
+    soup_message_headers_append(msg->request_headers, "X-Title", LUMILA_NAME);
 
     soup_message_body_append(msg->request_body, SOUP_MEMORY_COPY, json_body, strlen(json_body));
     g_free(json_body);

@@ -27,7 +27,7 @@ void lumila_config_init(void)
 
     if (!root) {
         root = json_object();
-        json_object_set_new(root, "version", json_string("0.4.0"));
+        json_object_set_new(root, "version", json_string(LUMILA_VERSION));
 
         json_t *keys = json_object();
         json_object_set_new(root, "api_keys", keys);

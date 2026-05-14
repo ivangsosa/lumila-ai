@@ -1,5 +1,5 @@
 AC_PREREQ([2.69])
-AC_INIT([lumila-ai], [0.4.0], [bugs@example.com])
+AC_INIT([lumila-ai], [0.5.0], [bugs@example.com])
 AC_CONFIG_SRCDIR([src/main.c])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
@@ -25,6 +25,12 @@ PKG_CHECK_MODULES([SOUP], [libsoup-3.0],
         [AC_DEFINE([HAVE_SOUP2], [1], [libsoup 2.x available])])]
 )
 PKG_CHECK_MODULES([JANSSON], [jansson >= 2.7])
+
+# Export version to config.h
+AC_DEFINE_UNQUOTED([LUMILA_VERSION], ["$VERSION"], [Plugin version])
+AC_DEFINE_UNQUOTED([LUMILA_NAME], ["Lumila AI"], [Plugin display name])
+AC_DEFINE_UNQUOTED([LUMILA_DESCRIPTION], ["AI Assistant for Geany - Multi-provider Chat"], [Plugin description])
+AC_DEFINE_UNQUOTED([LUMILA_AUTHOR], ["Iván Gabriel Sosa"], [Plugin author])
 
 # Plugin directory
 AC_MSG_CHECKING([for Geany plugin directory])
