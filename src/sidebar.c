@@ -62,6 +62,25 @@ static void on_history_clicked(GtkButton *button, gpointer user_data)
     gtk_stack_set_visible_child_name(GTK_STACK(stack), "history");
 }
 
+static gboolean on_input_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+
+    if ((event->state & GDK_CONTROL_MASK) &&
+        (event->keyval == GDK_KEY_Return || event->keyval == GDK_KEY_KP_Enter)) {
+        on_send_clicked(NULL, NULL);
+        return TRUE;
+    }
+
+    if (event->keyval == GDK_KEY_Escape) {
+        lumila_sidebar_cancel_request();
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
 void lumila_sidebar_init(void)
 {
     sidebar_widget = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
@@ -133,6 +152,8 @@ void lumila_sidebar_init(void)
 
     input_view = gtk_text_view_new();
     gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(input_view), GTK_WRAP_WORD);
+    gtk_widget_add_events(input_view, GDK_KEY_PRESS_MASK);
+    g_signal_connect(input_view, "key-press-event", G_CALLBACK(on_input_key_press), NULL);
     gtk_container_add(GTK_CONTAINER(input_scrolled), input_view);
     gtk_box_pack_start(GTK_BOX(chat_page), input_scrolled, FALSE, FALSE, 0);
 
@@ -213,6 +234,9 @@ void lumila_sidebar_set_input_sensitive(gboolean sensitive)
 {
     if (input_view) {
         gtk_widget_set_sensitive(input_view, sensitive);
+        if (sensitive) {
+            gtk_widget_grab_focus(input_view);
+        }
     }
     if (send_button) {
         gtk_widget_set_sensitive(send_button, sensitive);

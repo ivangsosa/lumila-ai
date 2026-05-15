@@ -361,3 +361,52 @@ void lumila_chat_ui_clear(GtkTextView *view)
     gtk_text_buffer_get_bounds(buffer, &start, &end);
     gtk_text_buffer_delete(buffer, &start, &end);
 }
+
+/* Streaming UI implementation */
+static GtkTextMark *stream_mark = NULL;
+
+void lumila_chat_ui_stream_start(GtkTextView *view)
+{
+    if (!view) return;
+
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer(view);
+    GtkTextIter end;
+    gtk_text_buffer_get_end_iter(buffer, &end);
+
+    if (gtk_text_buffer_get_char_count(buffer) > 0) {
+        gtk_text_buffer_insert(buffer, &end, "\n", -1);
+    }
+
+    gtk_text_buffer_insert_with_tags(buffer, &end, "Lumila", -1, ai_name_tag, NULL);
+    gtk_text_buffer_insert(buffer, &end, "\n", -1);
+
+    stream_mark = gtk_text_buffer_create_mark(buffer, "stream_mark", &end, FALSE);
+}
+
+void lumila_chat_ui_stream_append(GtkTextView *view, const gchar *chunk)
+{
+    if (!view || !chunk || !stream_mark) return;
+
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer(view);
+    GtkTextIter iter;
+    gtk_text_buffer_get_iter_at_mark(buffer, &iter, stream_mark);
+    gtk_text_buffer_insert_with_tags(buffer, &iter, chunk, -1, ai_tag, NULL);
+
+    // Scroll to end
+    GtkTextMark *mark = gtk_text_buffer_get_insert(buffer);
+    gtk_text_view_scroll_to_mark(view, mark, 0.0, FALSE, 0.0, 0.0);
+}
+
+void lumila_chat_ui_stream_end(GtkTextView *view)
+{
+    if (!view) return;
+
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer(view);
+    GtkTextIter end;
+    gtk_text_buffer_get_end_iter(buffer, &end);
+    if (stream_mark) {
+        gtk_text_buffer_delete_mark(buffer, stream_mark);
+        stream_mark = NULL;
+    }
+    gtk_text_buffer_insert(buffer, &end, "\n", -1);
+}

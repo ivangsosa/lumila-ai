@@ -38,6 +38,74 @@ static gint current_provider_id = 0;
 static gchar *conversation_id = NULL;
 static gchar *history_dir = NULL;
 static gchar *conversation_title = NULL;
+static GString *stream_response = NULL;
+
+/* Idle callback data for thread-safe UI updates */
+typedef struct {
+    gchar *chunk;
+    gboolean is_final;
+    gchar *full_response;
+} StreamIdleData;
+
+static gboolean stream_idle_callback(gpointer user_data)
+{
+    StreamIdleData *data = (StreamIdleData *)user_data;
+
+    if (data->is_final) {
+        lumila_chat_ui_stream_end(chat_view);
+        if (data->full_response) {
+            gchar *cleaned = apply_file_edits(data->full_response);
+            ChatMessage msg = {
+                .role = g_strdup("assistant"),
+                .content = g_strdup(data->full_response),
+                .timestamp = get_current_timestamp()
+            };
+            g_array_append_val(messages, msg);
+            if (cleaned) {
+                // Replace the streamed text with cleaned version
+                // For simplicity, just append the summary if any
+                if (strlen(cleaned) > strlen(data->full_response)) {
+                    GtkTextBuffer *buffer = gtk_text_view_get_buffer(chat_view);
+                    GtkTextIter end;
+                    gtk_text_buffer_get_end_iter(buffer, &end);
+                    gtk_text_buffer_insert(buffer, &end, "\n", -1);
+                    gtk_text_buffer_insert(buffer, &end, cleaned + strlen(data->full_response), -1);
+                }
+                g_free(cleaned);
+            }
+        } else {
+            append_message_to_view("assistant", "Error: Failed to get response");
+        }
+        lumila_sidebar_set_status(NULL);
+        lumila_sidebar_set_input_sensitive(TRUE);
+        g_free(data->full_response);
+    } else if (data->chunk) {
+        lumila_chat_ui_stream_append(chat_view, data->chunk);
+    }
+
+    g_free(data->chunk);
+    g_free(data);
+    return G_SOURCE_REMOVE;
+}
+
+static void on_stream_chunk(const gchar *chunk, gboolean is_final, gpointer user_data)
+{
+    (void)user_data;
+
+    StreamIdleData *data = g_new0(StreamIdleData, 1);
+    data->chunk = chunk ? g_strdup(chunk) : NULL;
+    data->is_final = is_final;
+    if (is_final && stream_response) {
+        data->full_response = g_strdup(stream_response->str);
+        g_string_free(stream_response, TRUE);
+        stream_response = NULL;
+    } else if (chunk) {
+        if (!stream_response)
+            stream_response = g_string_new("");
+        g_string_append(stream_response, chunk);
+    }
+    g_idle_add(stream_idle_callback, data);
+}
 
 void lumila_chat_init(void)
 {
@@ -332,7 +400,13 @@ void lumila_chat_send_message(const gchar *message)
     if (current_provider) {
         lumila_sidebar_set_status(_("Thinking..."));
         lumila_sidebar_set_input_sensitive(FALSE);
-        lumila_provider_send_message(current_provider, complete_message, on_response_received, NULL);
+        if (current_provider->send_message_stream) {
+            lumila_chat_ui_stream_start(chat_view);
+            lumila_provider_send_message_stream(current_provider, complete_message,
+                                                   on_stream_chunk, on_stream_chunk, NULL);
+        } else {
+            lumila_provider_send_message(current_provider, complete_message, on_response_received, NULL);
+        }
     }
 
     g_free(complete_message);

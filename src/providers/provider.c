@@ -46,6 +46,17 @@ void lumila_provider_send_message(LumilaProvider *provider, const gchar *message
     }
 }
 
+void lumila_provider_send_message_stream(LumilaProvider *provider, const gchar *message,
+                                          LumilaChunkCallback chunk_cb,
+                                          LumilaResponseCallback final_cb, gpointer user_data)
+{
+    if (provider && provider->send_message_stream) {
+        provider->send_message_stream(provider, message, chunk_cb, final_cb, user_data);
+    } else if (provider && provider->send_message) {
+        provider->send_message(provider, message, final_cb, user_data);
+    }
+}
+
 void lumila_provider_cancel(LumilaProvider *provider)
 {
     if (provider && provider->cancel) {
