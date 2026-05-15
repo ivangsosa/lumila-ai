@@ -5,6 +5,7 @@
 #include "config.h"
 #include "plugin.h"
 #include "sidebar.h"
+#include "history.h"
 #include <geanyplugin.h>
 #include <string.h>
 #include <time.h>
@@ -36,6 +37,7 @@ static LumilaProvider *current_provider = NULL;
 static gint current_provider_id = 0;
 static gchar *conversation_id = NULL;
 static gchar *history_dir = NULL;
+static gchar *conversation_title = NULL;
 
 void lumila_chat_init(void)
 {
@@ -83,6 +85,8 @@ void lumila_chat_cleanup(void)
 
     g_free(conversation_id);
     g_free(history_dir);
+    g_free(conversation_title);
+    conversation_title = NULL;
 }
 
 void lumila_chat_set_view(GtkTextView *view)
@@ -292,6 +296,19 @@ void lumila_chat_send_message(const gchar *message)
     g_array_append_val(messages, msg);
     append_message_to_view("user", message);
 
+    // Extract title from first user message
+    if (!conversation_title || !*conversation_title) {
+        gchar *first_line = g_strdup(message);
+        gchar *newline = strchr(first_line, '\n');
+        if (newline) *newline = '\0';
+        if (strlen(first_line) > 60) {
+            first_line[60] = '\0';
+            strcat(first_line, "...");
+        }
+        g_free(conversation_title);
+        conversation_title = first_line;
+    }
+
     // Get context from open files
     gchar *files_context = get_open_files_context();
 
@@ -352,6 +369,7 @@ void lumila_chat_save_history(void)
     g_date_time_unref(now);
 
     json_object_set_new(root, "provider_id", json_integer(current_provider_id));
+    json_object_set_new(root, "title", json_string(conversation_title ? conversation_title : ""));
 
     // Add messages array
     json_t *msgs_array = json_array();
@@ -398,7 +416,64 @@ void lumila_chat_new_conversation(void)
 
     // Generate new conversation ID
     g_free(conversation_id);
+    g_free(conversation_title);
+    conversation_title = NULL;
     GDateTime *now = g_date_time_new_now_local();
     conversation_id = g_date_time_format(now, "conversation-%Y%m%d-%H%M%S");
     g_date_time_unref(now);
+}
+
+void lumila_chat_set_title(const gchar *title)
+{
+    g_free(conversation_title);
+    conversation_title = g_strdup(title);
+}
+
+void lumila_chat_load_conversation(const gchar *filename)
+{
+    if (!filename) return;
+
+    // Save current conversation first
+    lumila_chat_save_history();
+
+    // Clear current messages and UI
+    if (messages) {
+        for (guint i = 0; i < messages->len; i++) {
+            ChatMessage *msg = &g_array_index(messages, ChatMessage, i);
+            g_free(msg->role);
+            g_free(msg->content);
+            g_free(msg->timestamp);
+        }
+        g_array_set_size(messages, 0);
+    }
+    if (chat_view) {
+        lumila_chat_ui_clear(chat_view);
+    }
+
+    // Load from history file
+    GArray *loaded = lumila_history_load_messages(filename);
+    if (!loaded) return;
+
+    for (guint i = 0; i < loaded->len; i++) {
+        ChatMessage *src = &g_array_index(loaded, ChatMessage, i);
+        ChatMessage msg = {
+            .role = g_strdup(src->role),
+            .content = g_strdup(src->content),
+            .timestamp = g_strdup(src->timestamp)
+        };
+        g_array_append_val(messages, msg);
+        append_message_to_view(msg.role, msg.content);
+    }
+
+    for (guint i = 0; i < loaded->len; i++) {
+        ChatMessage *msg = &g_array_index(loaded, ChatMessage, i);
+        g_free(msg->role);
+        g_free(msg->content);
+        g_free(msg->timestamp);
+    }
+    g_array_free(loaded, TRUE);
+
+    // Update conversation ID from filename
+    g_free(conversation_id);
+    conversation_id = g_strndup(filename, strlen(filename) - 5); // remove .json
 }

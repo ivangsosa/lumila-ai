@@ -11,5 +11,7 @@ void lumila_chat_set_provider(gint provider_id);
 void lumila_chat_new_conversation(void);
 void lumila_chat_save_history(void);
 void lumila_chat_cancel_request(void);
+void lumila_chat_load_conversation(const gchar *filename);
+void lumila_chat_set_title(const gchar *title);
 
 #endif

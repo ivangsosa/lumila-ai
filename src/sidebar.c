@@ -2,6 +2,7 @@
 #include "chat.h"
 #include "config.h"
 #include "plugin.h"
+#include "history_ui.h"
 #include <geanyplugin.h>
 
 static GtkWidget *sidebar_widget = NULL;
@@ -53,6 +54,14 @@ static void on_cancel_clicked(GtkButton *button, gpointer user_data)
     lumila_sidebar_cancel_request();
 }
 
+static void on_history_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+    GtkWidget *stack = (GtkWidget *)user_data;
+    lumila_history_ui_refresh();
+    gtk_stack_set_visible_child_name(GTK_STACK(stack), "history");
+}
+
 void lumila_sidebar_init(void)
 {
     sidebar_widget = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
@@ -71,9 +80,16 @@ void lumila_sidebar_init(void)
     gtk_style_context_add_provider(ctx, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     g_object_unref(css_provider);
 
+    // Create stack for chat and history views
+    GtkWidget *stack = gtk_stack_new();
+    gtk_stack_set_transition_type(GTK_STACK(stack), GTK_STACK_TRANSITION_TYPE_SLIDE_LEFT_RIGHT);
+
+    // ---- CHAT PAGE ----
+    GtkWidget *chat_page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+
     // Provider selector
     GtkWidget *provider_label = gtk_label_new(_("Provider:"));
-    gtk_box_pack_start(GTK_BOX(sidebar_widget), provider_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(chat_page), provider_label, FALSE, FALSE, 0);
 
     provider_combo = gtk_combo_box_text_new();
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Claude Sonnet 4");
@@ -91,12 +107,10 @@ void lumila_sidebar_init(void)
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Ollama Mistral Small");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "OpenRouter Free");
 
-    // Set default provider from config
     gint default_provider = lumila_config_get_default_provider();
     gtk_combo_box_set_active(GTK_COMBO_BOX(provider_combo), default_provider);
-
     g_signal_connect(provider_combo, "changed", G_CALLBACK(on_provider_changed), NULL);
-    gtk_box_pack_start(GTK_BOX(sidebar_widget), provider_combo, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(chat_page), provider_combo, FALSE, FALSE, 0);
 
     // Chat view
     GtkWidget *scrolled = gtk_scrolled_window_new(NULL, NULL);
@@ -107,7 +121,7 @@ void lumila_sidebar_init(void)
     gtk_text_view_set_editable(GTK_TEXT_VIEW(chat_view), FALSE);
     gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(chat_view), GTK_WRAP_WORD);
     gtk_container_add(GTK_CONTAINER(scrolled), chat_view);
-    gtk_box_pack_start(GTK_BOX(sidebar_widget), scrolled, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(chat_page), scrolled, TRUE, TRUE, 0);
 
     lumila_chat_set_view(GTK_TEXT_VIEW(chat_view));
 
@@ -120,33 +134,43 @@ void lumila_sidebar_init(void)
     input_view = gtk_text_view_new();
     gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(input_view), GTK_WRAP_WORD);
     gtk_container_add(GTK_CONTAINER(input_scrolled), input_view);
-    gtk_box_pack_start(GTK_BOX(sidebar_widget), input_scrolled, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(chat_page), input_scrolled, FALSE, FALSE, 0);
 
     // Status label
     status_label = gtk_label_new("");
     gtk_widget_set_no_show_all(status_label, TRUE);
-    gtk_box_pack_start(GTK_BOX(sidebar_widget), status_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(chat_page), status_label, FALSE, FALSE, 0);
 
     // Buttons container
     GtkWidget *buttons_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
 
-    // New Chat button
+    GtkWidget *history_button = gtk_button_new_with_label(_("History"));
+    g_signal_connect(history_button, "clicked", G_CALLBACK(on_history_clicked), stack);
+    gtk_box_pack_start(GTK_BOX(buttons_box), history_button, TRUE, TRUE, 0);
+
     GtkWidget *new_chat_button = gtk_button_new_with_label(_("New Chat"));
     g_signal_connect(new_chat_button, "clicked", G_CALLBACK(on_new_chat_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(buttons_box), new_chat_button, TRUE, TRUE, 0);
 
-    // Send button
     send_button = gtk_button_new_with_label(_("Send"));
     g_signal_connect(send_button, "clicked", G_CALLBACK(on_send_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(buttons_box), send_button, TRUE, TRUE, 0);
 
-    // Cancel button
     cancel_button = gtk_button_new_with_label(_("Cancel"));
     g_signal_connect(cancel_button, "clicked", G_CALLBACK(on_cancel_clicked), NULL);
     gtk_widget_set_sensitive(cancel_button, FALSE);
     gtk_box_pack_start(GTK_BOX(buttons_box), cancel_button, TRUE, TRUE, 0);
 
-    gtk_box_pack_start(GTK_BOX(sidebar_widget), buttons_box, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(chat_page), buttons_box, FALSE, FALSE, 0);
+
+    gtk_stack_add_named(GTK_STACK(stack), chat_page, "chat");
+
+    // ---- HISTORY PAGE ----
+    GtkWidget *history_page = lumila_history_ui_create(stack);
+    gtk_stack_add_named(GTK_STACK(stack), history_page, "history");
+
+    gtk_stack_set_visible_child_name(GTK_STACK(stack), "chat");
+    gtk_box_pack_start(GTK_BOX(sidebar_widget), stack, TRUE, TRUE, 0);
 
     // Add to Geany sidebar
     gtk_widget_show_all(sidebar_widget);
