@@ -45,11 +45,12 @@ static GtkWidget *create_history_row(LumilaHistoryEntry *entry)
     g_free(title_text);
 
     gchar *meta = g_strdup_printf("%s  |  %s", entry->created_at, entry->model_name);
-    GtkWidget *meta_label = gtk_label_new(meta);
+    gchar *meta_markup = g_strdup_printf("<span style='italic' color='#888888'>%s</span>", meta);
+    GtkWidget *meta_label = gtk_label_new(NULL);
+    gtk_label_set_markup(GTK_LABEL(meta_label), meta_markup);
     gtk_widget_set_halign(meta_label, GTK_ALIGN_START);
-    gtk_label_set_style(GTK_LABEL(meta_label), PANGO_STYLE_ITALIC);
-    gtk_widget_override_color(meta_label, GTK_STATE_FLAG_NORMAL, &(GdkRGBA){0.5, 0.5, 0.5, 1.0});
     gtk_box_pack_start(GTK_BOX(vbox), meta_label, FALSE, FALSE, 0);
+    g_free(meta_markup);
     g_free(meta);
 
     gtk_box_pack_start(GTK_BOX(box), vbox, TRUE, TRUE, 0);

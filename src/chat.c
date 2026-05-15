@@ -25,6 +25,10 @@
     "You can edit multiple files by including multiple ```file: blocks. " \
     "Explain your changes before or after the code blocks.]\n\n"
 
+static void append_message_to_view(const gchar *role, const gchar *content);
+static gchar *get_current_timestamp(void);
+static gchar *apply_file_edits(const gchar *response);
+
 typedef struct {
     gchar *role;
     gchar *content;
@@ -91,18 +95,30 @@ static gboolean stream_idle_callback(gpointer user_data)
 static void on_stream_chunk(const gchar *chunk, gboolean is_final, gpointer user_data)
 {
     (void)user_data;
+    (void)is_final;
+
+    if (!chunk || !*chunk) return;
+
+    if (!stream_response)
+        stream_response = g_string_new("");
+    g_string_append(stream_response, chunk);
 
     StreamIdleData *data = g_new0(StreamIdleData, 1);
-    data->chunk = chunk ? g_strdup(chunk) : NULL;
-    data->is_final = is_final;
-    if (is_final && stream_response) {
-        data->full_response = g_strdup(stream_response->str);
+    data->chunk = g_strdup(chunk);
+    data->is_final = FALSE;
+    g_idle_add(stream_idle_callback, data);
+}
+
+static void on_stream_final(const gchar *response, gpointer user_data)
+{
+    (void)user_data;
+
+    StreamIdleData *data = g_new0(StreamIdleData, 1);
+    data->is_final = TRUE;
+    data->full_response = response ? g_strdup(response) : NULL;
+    if (stream_response) {
         g_string_free(stream_response, TRUE);
         stream_response = NULL;
-    } else if (chunk) {
-        if (!stream_response)
-            stream_response = g_string_new("");
-        g_string_append(stream_response, chunk);
     }
     g_idle_add(stream_idle_callback, data);
 }
@@ -403,7 +419,7 @@ void lumila_chat_send_message(const gchar *message)
         if (current_provider->send_message_stream) {
             lumila_chat_ui_stream_start(chat_view);
             lumila_provider_send_message_stream(current_provider, complete_message,
-                                                   on_stream_chunk, on_stream_chunk, NULL);
+                                                   on_stream_chunk, on_stream_final, NULL);
         } else {
             lumila_provider_send_message(current_provider, complete_message, on_response_received, NULL);
         }

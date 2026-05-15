@@ -37,6 +37,7 @@ lumila_ai_la_SOURCES = \
 	utils.h
 
 lumila_ai_la_CFLAGS = \
+	-I$(top_builddir) \
 	$(GEANY_CFLAGS) \
 	$(GTK_CFLAGS) \
 	$(GLIB_CFLAGS) \

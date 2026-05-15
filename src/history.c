@@ -2,6 +2,7 @@
 #include <string.h>
 #include <jansson.h>
 #include <geanyplugin.h>
+#include <glib/gstdio.h>
 
 extern GeanyData *geany_data;
 

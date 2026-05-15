@@ -1,3 +1,4 @@
+#include "../config.h"
 #include "config.h"
 #include "providers/provider.h"
 #include "plugin.h"

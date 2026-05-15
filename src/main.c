@@ -1,3 +1,4 @@
+#include "../config.h"
 #include <geanyplugin.h>
 #include "plugin.h"
 #include "sidebar.h"

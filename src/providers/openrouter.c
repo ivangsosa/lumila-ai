@@ -1,3 +1,4 @@
+#include "../../config.h"
 #include "openrouter.h"
 #include "../config.h"
 #include <jansson.h>
