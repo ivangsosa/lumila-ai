@@ -102,34 +102,48 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
     "mistral": ""
   },
   "defaults": {
-    "temperature": 0.7,
-    "max_tokens": 1024,
-    "top_p": 1.0,
+    "temperature": 0.3,
+    "max_tokens": 2048,
+    "top_p": 0.9,
     "repeat_penalty": 1.1,
-    "default_provider_id": 8
+    "default_provider_id": 9
   }
 }
 ```
 
 ### Parámetros
 
-- **temperature**: aleatoriedad (0.0 - 2.0, default 0.7)
-- **max_tokens**: máximo de tokens (100 - 8000, default 1024)
-- **top_p**: muestreo nucleus (0.0 - 1.0, default 1.0)
+- **temperature**: aleatoriedad (0.0 - 2.0, default 0.3)
+- **max_tokens**: máximo de tokens (100 - 8000, default 2048)
+- **top_p**: muestreo nucleus (0.0 - 1.0, default 0.9)
 - **repeat_penalty**: penalización de repetición (default 1.1)
-- **default_provider_id**: modelo por defecto (0-13, default 8 = OpenRouter Quasar)
+- **default_provider_id**: modelo por defecto (0-13, default 9 = DeepSeek Chat)
+
+### Configuraciones sugeridas por modelo
+
+| Escenario | `temperature` | `max_tokens` | `top_p` | `repeat_penalty` | `default_provider_id` |
+|---|---|---|---|---|---|
+| **DeepSeek Chat** (rápido, barato, bueno para código) | 0.3 | 2048 | 0.9 | 1.1 | 9 |
+| **DeepSeek Reasoner** (raciocinio profundo) | 0.2 | 4096 | 0.95 | 1.1 | 10 |
+| **Ollama Qwen3:8b** (local, ligero) | 0.5 | 2048 | 0.9 | 1.05 | 7 |
+| **OpenRouter Quasar** (gratis) | 0.3 | 2048 | 0.9 | 1.1 | 8 |
+| **Genérica** (Claude, GPT-4.1, Gemini) | 0.3 | 2048 | 0.9 | 1.1 | según modelo |
+
+- `temperature` baja (0.2-0.3) = respuestas más directas y reproducibles, ideal para código
+- `temperature` media (0.5) = equilibrada, útil para modelos locales que tienden a repetirse
+- `max_tokens` 2048 = suficiente para respuestas con código; subir a 4096 solo si necesitás respuestas muy largas
 
 ### API Keys
 
-| Proveedor | URL |
-|---|---|
-| Anthropic Claude | https://console.anthropic.com/settings/keys |
-| OpenAI | https://platform.openai.com/api-keys |
-| Google Gemini | https://makersuite.google.com/app/apikey |
-| DeepSeek | https://platform.deepseek.com/api_keys |
-| Mistral | https://console.mistral.ai/api-keys |
-| OpenRouter | https://openrouter.ai/keys |
-| Ollama | Local (sin key) — http://localhost:11434 |
+| Proveedor         | URL                                         |
+|-------------------|---------------------------------------------|
+| Anthropic Claude  | https://console.anthropic.com/settings/keys |
+| OpenAI            | https://platform.openai.com/api-keys        |
+| Google Gemini     | https://makersuite.google.com/app/apikey    |
+| DeepSeek          | https://platform.deepseek.com/api_keys      |
+| Mistral           | https://console.mistral.ai/api-keys         |
+| OpenRouter        | https://openrouter.ai/keys                  |
+| Ollama            | Local (sin key) — http://localhost:11434    |
 
 ## Usage
 
