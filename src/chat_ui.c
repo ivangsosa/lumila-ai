@@ -24,42 +24,42 @@ void lumila_chat_ui_init(GtkTextView *view)
     // Create text tags for styling - user message without background
     user_tag = gtk_text_buffer_create_tag(buffer, "user",
         "justification", GTK_JUSTIFY_RIGHT,
-        "left-margin", 60,
+        "left-margin", 80,
         "right-margin", 10,
-        "pixels-above-lines", 8,
-        "pixels-below-lines", 8,
-        "foreground", "#4A90D9",  // Azul para el texto del usuario, sin fondo
+        "pixels-above-lines", 10,
+        "pixels-below-lines", 10,
+        "foreground", "#82AAFF",  // Azul moderno brillante
         "wrap-mode", GTK_WRAP_WORD,
         NULL);
 
     ai_tag = gtk_text_buffer_create_tag(buffer, "ai",
         "justification", GTK_JUSTIFY_LEFT,
         "left-margin", 10,
-        "right-margin", 60,
-        "pixels-above-lines", 8,
-        "pixels-below-lines", 8,
-        "foreground", "#E0E0E0",
+        "right-margin", 80,
+        "pixels-above-lines", 10,
+        "pixels-below-lines", 10,
+        "foreground", "#C8D3F5",  // Blanco azulado suave
         "wrap-mode", GTK_WRAP_WORD,
         NULL);
 
     // Sender name tags
     user_name_tag = gtk_text_buffer_create_tag(buffer, "user_name",
         "justification", GTK_JUSTIFY_RIGHT,
-        "left-margin", 60,
+        "left-margin", 80,
         "right-margin", 10,
-        "pixels-above-lines", 10,
-        "pixels-below-lines", 2,
-        "foreground", "#4A90D9",
+        "pixels-above-lines", 14,
+        "pixels-below-lines", 4,
+        "foreground", "#82AAFF",
         "weight", PANGO_WEIGHT_BOLD,
         NULL);
 
     ai_name_tag = gtk_text_buffer_create_tag(buffer, "ai_name",
         "justification", GTK_JUSTIFY_LEFT,
         "left-margin", 10,
-        "right-margin", 60,
-        "pixels-above-lines", 10,
-        "pixels-below-lines", 2,
-        "foreground", "#7ED321",
+        "right-margin", 80,
+        "pixels-above-lines", 14,
+        "pixels-below-lines", 4,
+        "foreground", "#C3E88D",  // Verde moderno
         "weight", PANGO_WEIGHT_BOLD,
         NULL);
 
@@ -110,15 +110,15 @@ void lumila_chat_ui_init(GtkTextView *view)
         "background", "#000000",
         NULL);
 
-    // Apply CSS for black background
+    // Apply CSS for modern dark background
     GtkCssProvider *css_provider = gtk_css_provider_new();
-    const gchar *css_data = 
+    const gchar *css_data =
         "textview {"
-        "  background-color: #000000;"
-        "  color: #E0E0E0;"
+        "  background-color: #0f0f23;"
+        "  color: #C8D3F5;"
         "}"
         "textview text {"
-        "  background-color: #000000;"
+        "  background-color: #0f0f23;"
         "}";
 
     gtk_css_provider_load_from_data(css_provider, css_data, -1, NULL);

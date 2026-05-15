@@ -1,15 +1,20 @@
 #include "model_registry.h"
 
 const LumilaModelEntry lumila_model_registry[LUMILA_NUM_PROVIDERS] = {
-    { 0, "Claude 3.5 Sonnet",     LUMILA_PROVIDER_ANTHROPIC, 0, "claude-3-5-sonnet-20241022" },
-    { 1, "Claude 3 Opus",         LUMILA_PROVIDER_ANTHROPIC, 1, "claude-3-opus-20240229"     },
-    { 2, "GPT-4o",                LUMILA_PROVIDER_OPENAI,    0, "gpt-4o"                     },
-    { 3, "GPT-4o mini",           LUMILA_PROVIDER_OPENAI,    1, "gpt-4o-mini"                },
-    { 4, "Gemini 1.5 Flash",      LUMILA_PROVIDER_GOOGLE,    0, "gemini-1.5-flash"           },
-    { 5, "Gemini 1.5 Pro",        LUMILA_PROVIDER_GOOGLE,    1, "gemini-1.5-pro"             },
-    { 6, "Ollama Llama 3.2",      LUMILA_PROVIDER_OLLAMA,    0, "llama3.2:3b"                },
-    { 7, "Ollama Qwen 2.5",       LUMILA_PROVIDER_OLLAMA,    1, "qwen2.5:7b"                 },
-    { 8, "OpenRouter",            LUMILA_PROVIDER_OPENROUTER,0, "openrouter"                 },
+    { 0, "Claude Sonnet 4",       LUMILA_PROVIDER_ANTHROPIC,  0, "claude-sonnet-4-20250514"  },
+    { 1, "Claude Opus 4",         LUMILA_PROVIDER_ANTHROPIC,  1, "claude-opus-4-20250514"    },
+    { 2, "GPT-4.1",               LUMILA_PROVIDER_OPENAI,     0, "gpt-4.1"                    },
+    { 3, "GPT-4.1 mini",          LUMILA_PROVIDER_OPENAI,     1, "gpt-4.1-mini"               },
+    { 4, "Gemini 2.5 Flash",      LUMILA_PROVIDER_GOOGLE,     0, "gemini-2.5-flash-preview-05-20" },
+    { 5, "Gemini 2.5 Pro",        LUMILA_PROVIDER_GOOGLE,     1, "gemini-2.5-pro-preview-05-20"   },
+    { 6, "Ollama Llama 3.3",      LUMILA_PROVIDER_OLLAMA,     0, "llama3.3"                   },
+    { 7, "Ollama Qwen3",          LUMILA_PROVIDER_OLLAMA,     1, "qwen3:8b"                   },
+    { 8, "OpenRouter Quasar",     LUMILA_PROVIDER_OPENROUTER, 0, "openrouter/quasar-alpha"    },
+    { 9, "DeepSeek Chat",         LUMILA_PROVIDER_DEEPSEEK,   0, "deepseek-chat"              },
+    { 10, "DeepSeek Reasoner",    LUMILA_PROVIDER_DEEPSEEK,   1, "deepseek-reasoner"          },
+    { 11, "Mistral Large",        LUMILA_PROVIDER_MISTRAL,    0, "mistral-large-latest"       },
+    { 12, "Ollama Mistral Small", LUMILA_PROVIDER_OLLAMA,     2, "mistral-small:24b"          },
+    { 13, "OpenRouter Free",      LUMILA_PROVIDER_OPENROUTER, 1, "openrouter/free"            },
 };
 
 const LumilaModelEntry *lumila_model_registry_lookup(gint provider_id)

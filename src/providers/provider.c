@@ -4,6 +4,8 @@
 #include "google.h"
 #include "ollama.h"
 #include "openrouter.h"
+#include "deepseek.h"
+#include "mistral.h"
 #include <string.h>
 
 const gchar *lumila_provider_get_key_name(LumilaProviderType type)
@@ -15,6 +17,8 @@ const gchar *lumila_provider_get_key_name(LumilaProviderType type)
         case LUMILA_PROVIDER_KIMI: return "kimi";
         case LUMILA_PROVIDER_OPENROUTER: return "openrouter";
         case LUMILA_PROVIDER_OLLAMA: return "ollama";
+        case LUMILA_PROVIDER_DEEPSEEK: return "deepseek";
+        case LUMILA_PROVIDER_MISTRAL: return "mistral";
         default: return "unknown";
     }
 }
@@ -28,6 +32,8 @@ const gchar *lumila_provider_get_name(LumilaProviderType type)
         case LUMILA_PROVIDER_KIMI: return "Kimi";
         case LUMILA_PROVIDER_OPENROUTER: return "OpenRouter";
         case LUMILA_PROVIDER_OLLAMA: return "Ollama";
+        case LUMILA_PROVIDER_DEEPSEEK: return "DeepSeek";
+        case LUMILA_PROVIDER_MISTRAL: return "Mistral";
         default: return "Unknown";
     }
 }
@@ -60,6 +66,10 @@ LumilaProvider *lumila_provider_create(LumilaProviderType type)
             return ollama_provider_new();
         case LUMILA_PROVIDER_OPENROUTER:
             return openrouter_provider_new();
+        case LUMILA_PROVIDER_DEEPSEEK:
+            return deepseek_provider_new();
+        case LUMILA_PROVIDER_MISTRAL:
+            return mistral_provider_new();
         case LUMILA_PROVIDER_KIMI:
             // Not implemented yet, fallback to OpenAI
             return openai_provider_new();

@@ -10,7 +10,9 @@ typedef enum {
     LUMILA_PROVIDER_GOOGLE,
     LUMILA_PROVIDER_KIMI,
     LUMILA_PROVIDER_OPENROUTER,
-    LUMILA_PROVIDER_OLLAMA
+    LUMILA_PROVIDER_OLLAMA,
+    LUMILA_PROVIDER_DEEPSEEK,
+    LUMILA_PROVIDER_MISTRAL
 } LumilaProviderType;
 
 typedef void (*LumilaResponseCallback)(const gchar *response, gpointer user_data);

@@ -178,9 +178,9 @@ static void anthropic_send_message(LumilaProvider *provider, const gchar *messag
     // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "claude-3-5-sonnet-20241022"; break;  // Claude 3.5 Sonnet
-        case 1: model_name = "claude-3-opus-20240229"; break;      // Claude 3 Opus
-        default: model_name = "claude-3-5-sonnet-20241022"; break;
+        case 0: model_name = "claude-sonnet-4-20250514"; break;  // Claude Sonnet 4
+        case 1: model_name = "claude-opus-4-20250514"; break;     // Claude Opus 4
+        default: model_name = "claude-sonnet-4-20250514"; break;
     }
 
     json_object_set_new(root, "model", json_string(model_name));

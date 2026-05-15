@@ -58,20 +58,38 @@ void lumila_sidebar_init(void)
     sidebar_widget = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     gtk_container_set_border_width(GTK_CONTAINER(sidebar_widget), 6);
 
+    // Apply CSS for modern dark sidebar
+    GtkCssProvider *css_provider = gtk_css_provider_new();
+    const gchar *css_data =
+        "* { background-color: #0f0f23; color: #C8D3F5; }"
+        "button { background-color: #1a1a3e; border: 1px solid #2a2a5e; border-radius: 4px; padding: 6px; }"
+        "button:hover { background-color: #25255a; }"
+        "textview { background-color: #0f0f23; color: #C8D3F5; }"
+        "comboboxtext { background-color: #1a1a3e; color: #C8D3F5; border: 1px solid #2a2a5e; }";
+    gtk_css_provider_load_from_data(css_provider, css_data, -1, NULL);
+    GtkStyleContext *ctx = gtk_widget_get_style_context(sidebar_widget);
+    gtk_style_context_add_provider(ctx, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(css_provider);
+
     // Provider selector
     GtkWidget *provider_label = gtk_label_new(_("Provider:"));
     gtk_box_pack_start(GTK_BOX(sidebar_widget), provider_label, FALSE, FALSE, 0);
 
     provider_combo = gtk_combo_box_text_new();
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Claude 3.5 Sonnet");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Claude 3 Opus");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "GPT-4o");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "GPT-4o mini");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Gemini 1.5 Flash");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Gemini 1.5 Pro");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Ollama Llama 3.2");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Ollama Qwen 2.5");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "OpenRouter");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Claude Sonnet 4");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Claude Opus 4");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "GPT-4.1");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "GPT-4.1 mini");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Gemini 2.5 Flash");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Gemini 2.5 Pro");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Ollama Llama 3.3");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Ollama Qwen3");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "OpenRouter Quasar");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "DeepSeek Chat");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "DeepSeek Reasoner");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Mistral Large");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Ollama Mistral Small");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "OpenRouter Free");
 
     // Set default provider from config
     gint default_provider = lumila_config_get_default_provider();

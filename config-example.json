@@ -1,18 +1,20 @@
 {
-  "version": "0.5.0",
+  "version": "0.6.0",
   "api_keys": {
     "openai": "",
     "anthropic": "",
     "google": "",
     "kimi": "",
     "openrouter": "",
-    "ollama": ""
+    "ollama": "",
+    "deepseek": "",
+    "mistral": ""
   },
   "defaults": {
     "temperature": 0.7,
     "max_tokens": 1024,
     "top_p": 1.0,
-    "repeat_penalty": 1.1000000000000001,
+    "repeat_penalty": 1.1,
     "default_provider_id": 8
   }
 }

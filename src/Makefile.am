@@ -25,6 +25,10 @@ lumila_ai_la_SOURCES = \
 	providers/ollama.h \
 	providers/openrouter.c \
 	providers/openrouter.h \
+	providers/deepseek.c \
+	providers/deepseek.h \
+	providers/mistral.c \
+	providers/mistral.h \
 	utils.c \
 	utils.h
 

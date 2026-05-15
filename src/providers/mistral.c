@@ -1,20 +1,20 @@
-#include "openai.h"
+#include "mistral.h"
 #include "../config.h"
 #include <jansson.h>
 #include <string.h>
 #include <libsoup/soup.h>
 
-#define OPENAI_API_BASE "https://api.openai.com/v1/chat/completions"
+#define MISTRAL_API_BASE "https://api.mistral.ai/v1/chat/completions"
 
-static void openai_send_message(LumilaProvider *provider, const gchar *message,
-                                 LumilaResponseCallback callback, gpointer user_data);
-static void openai_cancel(LumilaProvider *provider);
+static void mistral_send_message(LumilaProvider *provider, const gchar *message,
+                                  LumilaResponseCallback callback, gpointer user_data);
+static void mistral_cancel(LumilaProvider *provider);
 
 typedef struct {
     LumilaProvider base;
     LumilaResponseCallback callback;
     gpointer user_data;
-} OpenAIProvider;
+} MistralProvider;
 
 #if SOUP_CHECK_VERSION(3, 0, 0)
 static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user_data);
@@ -22,11 +22,11 @@ static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user
 static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer user_data);
 #endif
 
-LumilaProvider *openai_provider_new(void)
+LumilaProvider *mistral_provider_new(void)
 {
-    OpenAIProvider *provider = g_new0(OpenAIProvider, 1);
+    MistralProvider *provider = g_new0(MistralProvider, 1);
 
-    provider->base.type = LUMILA_PROVIDER_OPENAI;
+    provider->base.type = LUMILA_PROVIDER_MISTRAL;
 #if SOUP_CHECK_VERSION(3, 0, 0)
     provider->base.session = soup_session_new_with_options(
         "timeout", 60,
@@ -37,15 +37,15 @@ LumilaProvider *openai_provider_new(void)
         NULL);
 #endif
     provider->base.cancellable = g_cancellable_new();
-    provider->base.send_message = openai_send_message;
-    provider->base.cancel = openai_cancel;
+    provider->base.send_message = mistral_send_message;
+    provider->base.cancel = mistral_cancel;
     provider->callback = NULL;
     provider->user_data = NULL;
 
     return (LumilaProvider *)provider;
 }
 
-static void openai_cancel(LumilaProvider *provider)
+static void mistral_cancel(LumilaProvider *provider)
 {
     if (provider && provider->cancellable) {
         g_cancellable_cancel(provider->cancellable);
@@ -59,7 +59,7 @@ static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user
 {
     (void)source;
 
-    OpenAIProvider *provider = (OpenAIProvider *)user_data;
+    MistralProvider *provider = (MistralProvider *)user_data;
     LumilaResponseCallback callback = provider->callback;
     gpointer cb_data = provider->user_data;
 
@@ -79,7 +79,6 @@ static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user
         json_t *root = json_loadb(data, size, 0, &json_error);
 
         if (root) {
-            // Check for API error
             json_t *error_obj = json_object_get(root, "error");
             if (error_obj) {
                 json_t *msg = json_object_get(error_obj, "message");
@@ -87,7 +86,6 @@ static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user
                     response_text = g_strdup_printf("API Error: %s", json_string_value(msg));
                 }
             } else {
-                // Parse successful response
                 json_t *choices = json_object_get(root, "choices");
                 if (choices && json_is_array(choices) && json_array_size(choices) > 0) {
                     json_t *first = json_array_get(choices, 0);
@@ -123,7 +121,7 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
 {
     (void)session;
 
-    OpenAIProvider *provider = (OpenAIProvider *)user_data;
+    MistralProvider *provider = (MistralProvider *)user_data;
     LumilaResponseCallback callback = provider->callback;
     gpointer cb_data = provider->user_data;
 
@@ -161,15 +159,15 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
 }
 #endif
 
-static void openai_send_message(LumilaProvider *provider, const gchar *message,
-                                 LumilaResponseCallback callback, gpointer user_data)
+static void mistral_send_message(LumilaProvider *provider, const gchar *message,
+                                  LumilaResponseCallback callback, gpointer user_data)
 {
-    OpenAIProvider *oa = (OpenAIProvider *)provider;
+    MistralProvider *m = (MistralProvider *)provider;
 
-    oa->callback = callback;
-    oa->user_data = user_data;
+    m->callback = callback;
+    m->user_data = user_data;
 
-    const gchar *api_key = lumila_config_get_api_key(LUMILA_PROVIDER_OPENAI);
+    const gchar *api_key = lumila_config_get_api_key(LUMILA_PROVIDER_MISTRAL);
     if (!api_key || !*api_key) {
         if (callback) {
             callback("Error: API key not configured", user_data);
@@ -177,15 +175,12 @@ static void openai_send_message(LumilaProvider *provider, const gchar *message,
         return;
     }
 
-    // Build JSON request
     json_t *root = json_object();
 
-    // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "gpt-4.1"; break;       // GPT-4.1
-        case 1: model_name = "gpt-4.1-mini"; break;  // GPT-4.1 mini
-        default: model_name = "gpt-4.1"; break;
+        case 0: model_name = "mistral-large-latest"; break;
+        default: model_name = "mistral-large-latest"; break;
     }
 
     json_object_set_new(root, "model", json_string(model_name));
@@ -205,7 +200,7 @@ static void openai_send_message(LumilaProvider *provider, const gchar *message,
     json_decref(root);
 
 #if SOUP_CHECK_VERSION(3, 0, 0)
-    SoupMessage *msg = soup_message_new("POST", OPENAI_API_BASE);
+    SoupMessage *msg = soup_message_new("POST", MISTRAL_API_BASE);
 
     soup_message_headers_append(soup_message_get_request_headers(msg), "Content-Type", "application/json");
 
@@ -216,12 +211,11 @@ static void openai_send_message(LumilaProvider *provider, const gchar *message,
     soup_message_set_request_body_from_bytes(msg, "application/json", g_bytes_new(json_body, strlen(json_body)));
     g_free(json_body);
 
-    // Send async
-    soup_session_send_and_read_async(provider->session, msg, G_PRIORITY_DEFAULT, 
+    soup_session_send_and_read_async(provider->session, msg, G_PRIORITY_DEFAULT,
                                       provider->cancellable, on_message_sent, provider);
     g_object_unref(msg);
 #else
-    SoupMessage *msg = soup_message_new("POST", OPENAI_API_BASE);
+    SoupMessage *msg = soup_message_new("POST", MISTRAL_API_BASE);
 
     soup_message_headers_append(msg->request_headers, "Content-Type", "application/json");
 
@@ -232,7 +226,6 @@ static void openai_send_message(LumilaProvider *provider, const gchar *message,
     soup_message_body_append(msg->request_body, SOUP_MEMORY_COPY, json_body, strlen(json_body));
     g_free(json_body);
 
-    // Send async
     soup_session_queue_message(provider->session, msg, on_message_sent, provider);
 #endif
 }

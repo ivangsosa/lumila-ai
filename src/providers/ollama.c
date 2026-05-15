@@ -169,9 +169,10 @@ static void ollama_send_message(LumilaProvider *provider, const gchar *message,
     // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "llama3.2:3b"; break;   // Llama 3.2 3B
-        case 1: model_name = "qwen2.5:7b"; break;    // Qwen 2.5 7B
-        default: model_name = "llama3.2:3b"; break;
+        case 0: model_name = "llama3.3"; break;     // Llama 3.3
+        case 1: model_name = "qwen3:8b"; break;      // Qwen3 8B
+        case 2: model_name = "mistral-small:24b"; break; // Mistral Small
+        default: model_name = "llama3.3"; break;
     }
 
     // Build JSON request for Ollama API
