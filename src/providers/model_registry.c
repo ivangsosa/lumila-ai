@@ -9,7 +9,7 @@ const LumilaModelEntry lumila_model_registry[LUMILA_NUM_PROVIDERS] = {
     { 5, "Gemini 2.5 Pro",        LUMILA_PROVIDER_GOOGLE,     1, "gemini-2.5-pro-preview-05-20"   },
     { 6, "Ollama Llama 3.3",      LUMILA_PROVIDER_OLLAMA,     0, "llama3.3"                   },
     { 7, "Ollama Qwen3",          LUMILA_PROVIDER_OLLAMA,     1, "qwen3:8b"                   },
-    { 8, "OpenRouter Quasar",     LUMILA_PROVIDER_OPENROUTER, 0, "openrouter/quasar-alpha"    },
+    { 8, "OpenRouter Auto",       LUMILA_PROVIDER_OPENROUTER, 0, "openrouter/auto"            },
     { 9, "DeepSeek Chat",         LUMILA_PROVIDER_DEEPSEEK,   0, "deepseek-chat"              },
     { 10, "DeepSeek Reasoner",    LUMILA_PROVIDER_DEEPSEEK,   1, "deepseek-reasoner"          },
     { 11, "Mistral Large",        LUMILA_PROVIDER_MISTRAL,    0, "mistral-large-latest"       },

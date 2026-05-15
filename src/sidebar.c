@@ -93,6 +93,8 @@ void lumila_sidebar_init(void)
         "button { background-color: #1a1a3e; border: 1px solid #2a2a5e; border-radius: 4px; padding: 6px; }"
         "button:hover { background-color: #25255a; }"
         "textview { background-color: #0f0f23; color: #C8D3F5; }"
+        ".input-frame { border-top: 1px solid #2a2a5e; margin-top: 6px; }"
+        ".input-frame textview { background-color: #141432; }"
         "comboboxtext { background-color: #1a1a3e; color: #C8D3F5; border: 1px solid #2a2a5e; }";
     gtk_css_provider_load_from_data(css_provider, css_data, -1, NULL);
     GtkStyleContext *ctx = gtk_widget_get_style_context(sidebar_widget);
@@ -119,7 +121,7 @@ void lumila_sidebar_init(void)
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Gemini 2.5 Pro");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Ollama Llama 3.3");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Ollama Qwen3");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "OpenRouter Quasar");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "OpenRouter Auto");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "DeepSeek Chat");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "DeepSeek Reasoner");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Mistral Large");
@@ -149,6 +151,7 @@ void lumila_sidebar_init(void)
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(input_scrolled),
                                    GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
     gtk_widget_set_size_request(input_scrolled, -1, 80);
+    gtk_style_context_add_class(gtk_widget_get_style_context(input_scrolled), "input-frame");
 
     input_view = gtk_text_view_new();
     gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(input_view), GTK_WRAP_WORD);

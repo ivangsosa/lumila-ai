@@ -183,9 +183,9 @@ static void openrouter_send_message(LumilaProvider *provider, const gchar *messa
     // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "openrouter/quasar-alpha"; break;
+        case 0: model_name = "openrouter/auto"; break;
         case 1: model_name = "openrouter/free"; break;
-        default: model_name = "openrouter/quasar-alpha"; break;
+        default: model_name = "openrouter/auto"; break;
     }
 
     json_object_set_new(root, "model", json_string(model_name));

@@ -27,22 +27,22 @@ AI Assistant plugin for Geany editor with multi-provider support, persistent his
 
 ## Modelos soportados (2025-2026)
 
-| # | Modelo | Proveedor | Tipo |
-|---|--------|-----------|------|
-| 0 | Claude Sonnet 4 | Anthropic | Pago |
-| 1 | Claude Opus 4 | Anthropic | Pago |
-| 2 | GPT-4.1 | OpenAI | Pago |
-| 3 | GPT-4.1 mini | OpenAI | Pago |
-| 4 | Gemini 2.5 Flash | Google | Pago |
-| 5 | Gemini 2.5 Pro | Google | Pago |
-| 6 | Ollama Llama 3.3 | Ollama | Local/Gratis |
-| 7 | Ollama Qwen3 | Ollama | Local/Gratis |
-| 8 | OpenRouter Quasar | OpenRouter | Gratis |
-| 9 | DeepSeek Chat | DeepSeek | Pago |
-| 10 | DeepSeek Reasoner | DeepSeek | Pago |
-| 11 | Mistral Large | Mistral | Pago |
-| 12 | Ollama Mistral Small | Ollama | Local/Gratis |
-| 13 | OpenRouter Free | OpenRouter | Gratis |
+| # | Modelo                | Proveedor   | Tipo          |
+|---|-----------------------|-------------|---------------|
+| 0 | Claude Sonnet 4       | Anthropic   | Pago          |
+| 1 | Claude Opus 4         | Anthropic   | Pago          |
+| 2 | GPT-4.1               | OpenAI      | Pago          |
+| 3 | GPT-4.1 mini          | OpenAI      | Pago          |
+| 4 | Gemini 2.5 Flash      | Google      | Pago          |
+| 5 | Gemini 2.5 Pro        | Google      | Pago          |
+| 6 | Ollama Llama 3.3      | Ollama      | Local/Gratis  |
+| 7 | Ollama Qwen3          | Ollama      | Local/Gratis  |
+| 8 | OpenRouter Auto       | OpenRouter  | Gratis        |
+| 9 | DeepSeek Chat         | DeepSeek    | Pago          |
+| 10 | DeepSeek Reasoner    | DeepSeek    | Pago          |
+| 11 | Mistral Large        | Mistral     | Pago          |
+| 12 | Ollama Mistral Small | Ollama      | Local/Gratis  |
+| 13 | OpenRouter Free      | OpenRouter  | Gratis        |
 
 ## Dependencies
 
@@ -126,7 +126,7 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
 | **DeepSeek Chat** (rápido, barato, bueno para código) | 0.3 | 2048 | 0.9 | 1.1 | 9 |
 | **DeepSeek Reasoner** (raciocinio profundo) | 0.2 | 4096 | 0.95 | 1.1 | 10 |
 | **Ollama Qwen3:8b** (local, ligero) | 0.5 | 2048 | 0.9 | 1.05 | 7 |
-| **OpenRouter Quasar** (gratis) | 0.3 | 2048 | 0.9 | 1.1 | 8 |
+| **OpenRouter Auto** (gratis, enrutamiento automático) | 0.3 | 2048 | 0.9 | 1.1 | 8 |
 | **Genérica** (Claude, GPT-4.1, Gemini) | 0.3 | 2048 | 0.9 | 1.1 | según modelo |
 
 - `temperature` baja (0.2-0.3) = respuestas más directas y reproducibles, ideal para código

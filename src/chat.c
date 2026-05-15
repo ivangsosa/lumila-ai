@@ -511,6 +511,8 @@ void lumila_chat_new_conversation(void)
     GDateTime *now = g_date_time_new_now_local();
     conversation_id = g_date_time_format(now, "conversation-%Y%m%d-%H%M%S");
     g_date_time_unref(now);
+
+    lumila_sidebar_set_input_sensitive(TRUE);
 }
 
 void lumila_chat_set_title(const gchar *title)
