@@ -1,4 +1,6 @@
 #include "history.h"
+#include "message.h"
+#include "providers/model_registry.h"
 #include <string.h>
 #include <jansson.h>
 #include <geanyplugin.h>
@@ -49,33 +51,8 @@ GList *lumila_history_list(void)
             json_t *pid = json_object_get(root, "provider_id");
             if (pid && json_is_integer(pid)) {
                 gint id = json_integer_value(pid);
-                const gchar *model = NULL;
-                switch (id) {
-                    case 0: model = "Claude Sonnet 4"; break;
-                    case 1: model = "Claude Opus 4"; break;
-                    case 2: model = "GPT-4.1"; break;
-                    case 3: model = "GPT-4.1 mini"; break;
-                    case 4: model = "Gemini 2.5 Flash"; break;
-                    case 5: model = "Gemini 2.5 Pro"; break;
-                    case 6: model = "Gemma 4 12B"; break;
-                    case 7: model = "Ollama Llama 3.3"; break;
-                    case 8: model = "Ollama Qwen3"; break;
-                    case 9: model = "OpenRouter Auto"; break;
-                    case 10: model = "DeepSeek V3"; break;
-                    case 11: model = "DeepSeek R1"; break;
-                    case 12: model = "Mistral Large"; break;
-                    case 13: model = "Ollama Mistral Small"; break;
-                    case 14: model = "OpenRouter Free"; break;
-                    case 15: model = "Moonshot Kimi K2.6"; break;
-                    case 16: model = "MAI-Code-1"; break;
-                    case 17: model = "GPT-4.1 nano"; break;
-                    case 18: model = "Mistral Small 3.1"; break;
-                    case 19: model = "OpenRouter GLM-4"; break;
-                    case 20: model = "OpenRouter Grok 3"; break;
-                    case 21: model = "OpenRouter Qwen3-235B"; break;
-                    default: model = "Unknown"; break;
-                }
-                entry->model_name = g_strdup(model);
+                const gchar *model = lumila_model_registry_get_display_name(id);
+                entry->model_name = g_strdup(model ? model : "Unknown");
             } else {
                 entry->model_name = g_strdup("Unknown");
             }
@@ -102,11 +79,13 @@ void lumila_history_entry_free(LumilaHistoryEntry *entry)
     g_free(entry);
 }
 
-typedef struct {
-    gchar *role;
-    gchar *content;
-    gchar *timestamp;
-} HistoryMessage;
+static void free_history_message(gpointer data)
+{
+    LumilaMessage *msg = (LumilaMessage *)data;
+    g_free(msg->role);
+    g_free(msg->content);
+    g_free(msg->timestamp);
+}
 
 GArray *lumila_history_load_messages(const gchar *filename)
 {
@@ -123,11 +102,12 @@ GArray *lumila_history_load_messages(const gchar *filename)
 
     json_t *arr = json_object_get(root, "messages");
     if (arr && json_is_array(arr)) {
-        msgs = g_array_new(FALSE, FALSE, sizeof(HistoryMessage));
+        msgs = g_array_new(FALSE, FALSE, sizeof(LumilaMessage));
+        g_array_set_clear_func(msgs, free_history_message);
         size_t i;
         json_t *msg_obj;
         json_array_foreach(arr, i, msg_obj) {
-            HistoryMessage msg;
+            LumilaMessage msg;
             json_t *r = json_object_get(msg_obj, "role");
             json_t *c = json_object_get(msg_obj, "content");
             json_t *t = json_object_get(msg_obj, "timestamp");
@@ -142,6 +122,13 @@ GArray *lumila_history_load_messages(const gchar *filename)
     return msgs;
 }
 
+void lumila_history_free_messages(GArray *msgs)
+{
+    if (msgs) {
+        g_array_free(msgs, TRUE);
+    }
+}
+
 gboolean lumila_history_delete(const gchar *filename)
 {
     gchar *dir = get_history_dir();
@@ -150,14 +137,6 @@ gboolean lumila_history_delete(const gchar *filename)
     gboolean ok = g_remove(path) == 0;
     g_free(path);
     return ok;
-}
-
-static void free_history_message(gpointer data)
-{
-    HistoryMessage *msg = (HistoryMessage *)data;
-    g_free(msg->role);
-    g_free(msg->content);
-    g_free(msg->timestamp);
 }
 
 gboolean lumila_history_rename(const gchar *old_filename, const gchar *new_title)

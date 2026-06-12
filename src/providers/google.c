@@ -1,4 +1,5 @@
 #include "google.h"
+#include "provider_base.h"
 #include "../config.h"
 #include <jansson.h>
 #include <string.h>
@@ -49,8 +50,6 @@ static void google_cancel(LumilaProvider *provider)
 {
     if (provider && provider->cancellable) {
         g_cancellable_cancel(provider->cancellable);
-        g_object_unref(provider->cancellable);
-        provider->cancellable = g_cancellable_new();
     }
 }
 
@@ -74,40 +73,7 @@ static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user
     } else if (bytes) {
         gsize size;
         const gchar *data = g_bytes_get_data(bytes, &size);
-
-        json_error_t json_error;
-        json_t *root = json_loadb(data, size, 0, &json_error);
-
-        if (root) {
-            // Check for API error
-            json_t *error_obj = json_object_get(root, "error");
-            if (error_obj) {
-                json_t *msg = json_object_get(error_obj, "message");
-                if (msg && json_is_string(msg)) {
-                    response_text = g_strdup_printf("API Error: %s", json_string_value(msg));
-                }
-            } else {
-                // Parse successful response
-                json_t *candidates = json_object_get(root, "candidates");
-                if (candidates && json_is_array(candidates) && json_array_size(candidates) > 0) {
-                    json_t *first = json_array_get(candidates, 0);
-                    json_t *content = json_object_get(first, "content");
-                    if (content) {
-                        json_t *parts = json_object_get(content, "parts");
-                        if (parts && json_is_array(parts) && json_array_size(parts) > 0) {
-                            json_t *first_part = json_array_get(parts, 0);
-                            json_t *text = json_object_get(first_part, "text");
-                            if (text && json_is_string(text)) {
-                                response_text = g_strdup(json_string_value(text));
-                            }
-                        }
-                    }
-                }
-            }
-            json_decref(root);
-        } else {
-            response_text = g_strdup_printf("JSON Parse Error: %s", json_error.text);
-        }
+        response_text = lumila_provider_base_parse_google(data, size);
         g_bytes_unref(bytes);
     }
 
@@ -193,6 +159,8 @@ static void google_send_message(LumilaProvider *provider, const gchar *message,
         case 2: model_name = "gemma-4-12b-it"; break;      // Gemma 4 12B
         default: model_name = "gemini-2.5-flash"; break;
     }
+    const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_GOOGLE);
+    if (custom) model_name = custom;
 
     // Build URL (API key sent via header for security)
     gchar *url = g_strdup_printf("%s%s:generateContent", GOOGLE_API_BASE, model_name);

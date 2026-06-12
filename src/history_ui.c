@@ -56,13 +56,13 @@ static GtkWidget *create_history_row(LumilaHistoryEntry *entry)
     gtk_box_pack_start(GTK_BOX(box), vbox, TRUE, TRUE, 0);
 
     GtkWidget *continue_btn = gtk_button_new_with_label("Continue");
-    g_signal_connect(continue_btn, "clicked", G_CALLBACK(on_continue_clicked),
-                     g_strdup(entry->filename));
+    g_signal_connect_data(continue_btn, "clicked", G_CALLBACK(on_continue_clicked),
+                          g_strdup(entry->filename), (GClosureNotify)g_free, 0);
     gtk_box_pack_start(GTK_BOX(box), continue_btn, FALSE, FALSE, 0);
 
     GtkWidget *delete_btn = gtk_button_new_with_label("Delete");
-    g_signal_connect(delete_btn, "clicked", G_CALLBACK(on_delete_clicked),
-                     g_strdup(entry->filename));
+    g_signal_connect_data(delete_btn, "clicked", G_CALLBACK(on_delete_clicked),
+                          g_strdup(entry->filename), (GClosureNotify)g_free, 0);
     gtk_box_pack_start(GTK_BOX(box), delete_btn, FALSE, FALSE, 0);
 
     gtk_container_add(GTK_CONTAINER(row), box);

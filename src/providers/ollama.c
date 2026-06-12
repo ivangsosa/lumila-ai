@@ -1,4 +1,5 @@
 #include "ollama.h"
+#include "provider_base.h"
 #include "../config.h"
 #include <jansson.h>
 #include <string.h>
@@ -49,8 +50,6 @@ static void ollama_cancel(LumilaProvider *provider)
 {
     if (provider && provider->cancellable) {
         g_cancellable_cancel(provider->cancellable);
-        g_object_unref(provider->cancellable);
-        provider->cancellable = g_cancellable_new();
     }
 }
 
@@ -74,32 +73,7 @@ static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user
     } else if (bytes) {
         gsize size;
         const gchar *data = g_bytes_get_data(bytes, &size);
-
-        // Ollama returns NDJSON (newline-delimited JSON), parse last line
-        const gchar *last_line = data;
-        for (gsize i = 0; i < size; i++) {
-            if (data[i] == '\n' && i + 1 < size) {
-                last_line = &data[i + 1];
-            }
-        }
-
-        json_error_t json_error;
-        json_t *root = json_loads(last_line, 0, &json_error);
-
-        if (root) {
-            json_t *error_obj = json_object_get(root, "error");
-            if (error_obj && json_is_string(error_obj)) {
-                response_text = g_strdup_printf("API Error: %s", json_string_value(error_obj));
-            } else {
-                json_t *response_obj = json_object_get(root, "response");
-                if (response_obj && json_is_string(response_obj)) {
-                    response_text = g_strdup(json_string_value(response_obj));
-                }
-            }
-            json_decref(root);
-        } else {
-            response_text = g_strdup_printf("JSON Parse Error: %s", json_error.text);
-        }
+        response_text = lumila_provider_base_parse_ollama(data, size);
         g_bytes_unref(bytes);
     }
 
@@ -174,6 +148,8 @@ static void ollama_send_message(LumilaProvider *provider, const gchar *message,
         case 2: model_name = "mistral-small:24b"; break; // Mistral Small
         default: model_name = "llama3.3"; break;
     }
+    const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_OLLAMA);
+    if (custom) model_name = custom;
 
     // Build JSON request for Ollama API
     json_t *root = json_object();

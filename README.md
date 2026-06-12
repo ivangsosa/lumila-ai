@@ -13,7 +13,11 @@ AI Assistant plugin for Geany editor with multi-provider support, persistent his
   - Usa el formato ` ```file:nombre.ext ` para editar
   - Crea archivos nuevos si no existen
   - Resumen de cambios en el chat
-- **Streaming de respuestas** (OpenAI, libsoup-3.0): texto en tiempo real
+- **Streaming de respuestas** (OpenAI, DeepSeek, Mistral, OpenRouter, Moonshot con libsoup-3.0): texto en tiempo real
+- **Slash commands** rápidos: `/explain`, `/refactor`, `/test`, `/doc`
+- **Send Selection**: envía el texto seleccionado en el editor como contexto
+- **Exportar a Markdown**: guarda la conversación actual como `.md`
+- **Modelos custom** vía `config.json`: sobrescribe el modelo de cualquier provider
 - **Historial de conversaciones persistente**
   - Guardado automático en `~/.config/geany/plugins/lumila-ai/history/`
   - Botón **History** para listar, continuar o eliminar conversaciones
@@ -103,7 +107,7 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
     "openai": "",
     "anthropic": "",
     "google": "",
-    "kimi": "",
+    "moonshot": "",
     "openrouter": "",
     "ollama": "",
     "deepseek": "",
@@ -115,6 +119,16 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
     "top_p": 0.9,
     "repeat_penalty": 1.1,
     "default_provider_id": 9
+  },
+  "custom_models": {
+    "openai": "",
+    "anthropic": "",
+    "google": "",
+    "moonshot": "",
+    "openrouter": "",
+    "ollama": "",
+    "deepseek": "",
+    "mistral": ""
   }
 }
 ```
@@ -170,6 +184,25 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
 - **Delete**: elimina una conversación del historial
 - Las conversaciones se guardan automáticamente al crear una nueva o cerrar Geany
 
+### Slash Commands
+
+Escribí un comando rápido en el input para transformar tu mensaje:
+
+- `/explain` — Explica el código seleccionado o del contexto
+- `/refactor` — Refactoriza para mejorar legibilidad
+- `/test` — Genera tests unitarios
+- `/doc` — Genera documentación
+
+Ejemplo: `/explain esta función`
+
+### Send Selection
+
+Seleccioná texto en el editor y presioná **Send Selection**. El plugin enviará solo esa porción como contexto, sin necesidad de copiar y pegar.
+
+### Exportar conversación
+
+Clic en **Export MD** para guardar el chat actual como archivo Markdown en `~/.config/geany/plugins/lumila-ai/exports/`.
+
 ### Edición de archivos
 
 Pedile a la IA que modifique un archivo. Responderá con bloques:
@@ -182,6 +215,19 @@ int main() { return 0; }
 El plugin detecta estos bloques y:
 - Si el archivo está abierto: **reemplaza su contenido**
 - Si no existe: **crea un nuevo archivo**
+
+### Modelos custom
+
+Agregá un modelo propio en `config.json` sin recompilar:
+
+```json
+"custom_models": {
+  "openai": "gpt-4-turbo",
+  "ollama": "codellama:13b"
+}
+```
+
+Dejá vacío (`""`) para usar el modelo por defecto del provider.
 
 ## Troubleshooting
 

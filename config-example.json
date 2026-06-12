@@ -16,5 +16,15 @@
     "top_p": 0.9,
     "repeat_penalty": 1.1,
     "default_provider_id": 9
+  },
+  "custom_models": {
+    "openai": "",
+    "anthropic": "",
+    "google": "",
+    "moonshot": "",
+    "openrouter": "",
+    "ollama": "",
+    "deepseek": "",
+    "mistral": ""
   }
 }

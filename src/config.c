@@ -34,11 +34,11 @@ void lumila_config_init(void)
         json_object_set_new(root, "api_keys", keys);
 
         json_t *defaults = json_object();
-        json_object_set_new(defaults, "temperature", json_real(0.7));
-        json_object_set_new(defaults, "max_tokens", json_integer(1024));
-        json_object_set_new(defaults, "top_p", json_real(1.0));
+        json_object_set_new(defaults, "temperature", json_real(0.3));
+        json_object_set_new(defaults, "max_tokens", json_integer(2048));
+        json_object_set_new(defaults, "top_p", json_real(0.9));
         json_object_set_new(defaults, "repeat_penalty", json_real(1.1));
-        json_object_set_new(defaults, "default_provider_id", json_integer(8));
+        json_object_set_new(defaults, "default_provider_id", json_integer(9));
         json_object_set_new(root, "defaults", defaults);
     }
 
@@ -88,47 +88,47 @@ void lumila_config_set_api_key(LumilaProviderType provider, const gchar *key)
 
 gdouble lumila_config_get_temperature(void)
 {
-    if (!config_root) return 0.7;
+    if (!config_root) return 0.3;
 
     json_t *defaults = json_object_get(config_root, "defaults");
-    if (!defaults) return 0.7;
+    if (!defaults) return 0.3;
 
     json_t *temp = json_object_get(defaults, "temperature");
     if (temp && json_is_real(temp)) {
         return json_real_value(temp);
     }
 
-    return 0.7;
+    return 0.3;
 }
 
 gint lumila_config_get_max_tokens(void)
 {
-    if (!config_root) return 1024;
+    if (!config_root) return 2048;
 
     json_t *defaults = json_object_get(config_root, "defaults");
-    if (!defaults) return 1024;
+    if (!defaults) return 2048;
 
     json_t *max_tok = json_object_get(defaults, "max_tokens");
     if (max_tok && json_is_integer(max_tok)) {
         return json_integer_value(max_tok);
     }
 
-    return 1024;
+    return 2048;
 }
 
 gdouble lumila_config_get_top_p(void)
 {
-    if (!config_root) return 1.0;
+    if (!config_root) return 0.9;
 
     json_t *defaults = json_object_get(config_root, "defaults");
-    if (!defaults) return 1.0;
+    if (!defaults) return 0.9;
 
     json_t *top = json_object_get(defaults, "top_p");
     if (top && json_is_real(top)) {
         return json_real_value(top);
     }
 
-    return 1.0;
+    return 0.9;
 }
 
 gdouble lumila_config_get_repeat_penalty(void)
@@ -148,15 +148,31 @@ gdouble lumila_config_get_repeat_penalty(void)
 
 gint lumila_config_get_default_provider(void)
 {
-    if (!config_root) return 8; // OpenRouter por defecto
+    if (!config_root) return 9; // OpenRouter Auto por defecto
 
     json_t *defaults = json_object_get(config_root, "defaults");
-    if (!defaults) return 8;
+    if (!defaults) return 9;
 
     json_t *provider = json_object_get(defaults, "default_provider_id");
     if (provider && json_is_integer(provider)) {
         return json_integer_value(provider);
     }
 
-    return 8; // OpenRouter por defecto
+    return 9; // OpenRouter Auto por defecto
+}
+
+const gchar *lumila_config_get_custom_model(LumilaProviderType provider)
+{
+    if (!config_root) return NULL;
+
+    json_t *custom = json_object_get(config_root, "custom_models");
+    if (!custom || !json_is_object(custom)) return NULL;
+
+    const gchar *key_name = lumila_provider_get_key_name(provider);
+    json_t *model = json_object_get(custom, key_name);
+    if (model && json_is_string(model)) {
+        return json_string_value(model);
+    }
+
+    return NULL;
 }

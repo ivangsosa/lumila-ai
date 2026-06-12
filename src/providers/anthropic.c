@@ -1,4 +1,5 @@
 #include "anthropic.h"
+#include "provider_base.h"
 #include "../config.h"
 #include <jansson.h>
 #include <string.h>
@@ -50,8 +51,6 @@ static void anthropic_cancel(LumilaProvider *provider)
 {
     if (provider && provider->cancellable) {
         g_cancellable_cancel(provider->cancellable);
-        g_object_unref(provider->cancellable);
-        provider->cancellable = g_cancellable_new();
     }
 }
 
@@ -75,33 +74,7 @@ static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user
     } else if (bytes) {
         gsize size;
         const gchar *data = g_bytes_get_data(bytes, &size);
-
-        json_error_t json_error;
-        json_t *root = json_loadb(data, size, 0, &json_error);
-
-        if (root) {
-            // Check for API error
-            json_t *error_obj = json_object_get(root, "error");
-            if (error_obj) {
-                json_t *msg = json_object_get(error_obj, "message");
-                if (msg && json_is_string(msg)) {
-                    response_text = g_strdup_printf("API Error: %s", json_string_value(msg));
-                }
-            } else {
-                // Parse successful response
-                json_t *content = json_object_get(root, "content");
-                if (content && json_is_array(content) && json_array_size(content) > 0) {
-                    json_t *first = json_array_get(content, 0);
-                    json_t *text = json_object_get(first, "text");
-                    if (text && json_is_string(text)) {
-                        response_text = g_strdup(json_string_value(text));
-                    }
-                }
-            }
-            json_decref(root);
-        } else {
-            response_text = g_strdup_printf("JSON Parse Error: %s", json_error.text);
-        }
+        response_text = lumila_provider_base_parse_anthropic(data, size);
         g_bytes_unref(bytes);
     }
 
@@ -182,6 +155,8 @@ static void anthropic_send_message(LumilaProvider *provider, const gchar *messag
         case 1: model_name = "claude-opus-4-20250514"; break;     // Claude Opus 4
         default: model_name = "claude-sonnet-4-20250514"; break;
     }
+    const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_ANTHROPIC);
+    if (custom) model_name = custom;
 
     json_object_set_new(root, "model", json_string(model_name));
     json_object_set_new(root, "max_tokens", json_integer(lumila_config_get_max_tokens()));

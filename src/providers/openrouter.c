@@ -1,4 +1,3 @@
-#include "../../config.h"
 #include "openrouter.h"
 #include "../config.h"
 #include <jansson.h>
@@ -9,6 +8,12 @@
 
 static void openrouter_send_message(LumilaProvider *provider, const gchar *message,
                                      LumilaResponseCallback callback, gpointer user_data);
+#if SOUP_CHECK_VERSION(3, 0, 0)
+static void openrouter_send_message_stream(LumilaProvider *provider, const gchar *message,
+                                            LumilaChunkCallback chunk_cb,
+                                            LumilaResponseCallback final_cb,
+                                            gpointer user_data);
+#endif
 static void openrouter_cancel(LumilaProvider *provider);
 
 typedef struct {
@@ -39,6 +44,11 @@ LumilaProvider *openrouter_provider_new(void)
 #endif
     provider->base.cancellable = g_cancellable_new();
     provider->base.send_message = openrouter_send_message;
+#if SOUP_CHECK_VERSION(3, 0, 0)
+    provider->base.send_message_stream = openrouter_send_message_stream;
+#else
+    provider->base.send_message_stream = NULL;
+#endif
     provider->base.cancel = openrouter_cancel;
     provider->callback = NULL;
     provider->user_data = NULL;
@@ -50,8 +60,6 @@ static void openrouter_cancel(LumilaProvider *provider)
 {
     if (provider && provider->cancellable) {
         g_cancellable_cancel(provider->cancellable);
-        g_object_unref(provider->cancellable);
-        provider->cancellable = g_cancellable_new();
     }
 }
 
@@ -75,36 +83,7 @@ static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user
     } else if (bytes) {
         gsize size;
         const gchar *data = g_bytes_get_data(bytes, &size);
-
-        json_error_t json_error;
-        json_t *root = json_loadb(data, size, 0, &json_error);
-
-        if (root) {
-            // Check for API error
-            json_t *error_obj = json_object_get(root, "error");
-            if (error_obj) {
-                json_t *msg = json_object_get(error_obj, "message");
-                if (msg && json_is_string(msg)) {
-                    response_text = g_strdup_printf("API Error: %s", json_string_value(msg));
-                }
-            } else {
-                // Parse successful response (OpenAI-compatible format)
-                json_t *choices = json_object_get(root, "choices");
-                if (choices && json_is_array(choices) && json_array_size(choices) > 0) {
-                    json_t *first = json_array_get(choices, 0);
-                    json_t *message_obj = json_object_get(first, "message");
-                    if (message_obj) {
-                        json_t *content = json_object_get(message_obj, "content");
-                        if (content && json_is_string(content)) {
-                            response_text = g_strdup(json_string_value(content));
-                        }
-                    }
-                }
-            }
-            json_decref(root);
-        } else {
-            response_text = g_strdup_printf("JSON Parse Error: %s", json_error.text);
-        }
+        response_text = lumila_provider_base_parse_openai(data, size);
         g_bytes_unref(bytes);
     }
 
@@ -192,6 +171,8 @@ static void openrouter_send_message(LumilaProvider *provider, const gchar *messa
         case 5: model_name = "qwen/qwen3-235b-a22b"; break;            // Qwen3-235B
         default: model_name = "openrouter/auto"; break;
     }
+    const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_OPENROUTER);
+    if (custom) model_name = custom;
 
     json_object_set_new(root, "model", json_string(model_name));
     json_object_set_new(root, "max_tokens", json_integer(lumila_config_get_max_tokens()));
@@ -249,3 +230,61 @@ static void openrouter_send_message(LumilaProvider *provider, const gchar *messa
     soup_session_queue_message(provider->session, msg, on_message_sent, provider);
 #endif
 }
+
+#if SOUP_CHECK_VERSION(3, 0, 0)
+static void openrouter_send_message_stream(LumilaProvider *provider, const gchar *message,
+                                            LumilaChunkCallback chunk_cb,
+                                            LumilaResponseCallback final_cb,
+                                            gpointer user_data)
+{
+    const gchar *api_key = lumila_config_get_api_key(LUMILA_PROVIDER_OPENROUTER);
+    if (!api_key || !*api_key) {
+        if (final_cb) {
+            final_cb("Error: API key not configured", user_data);
+        }
+        return;
+    }
+
+    json_t *root = json_object();
+    const gchar *model_name;
+    switch (provider->model_id) {
+        case 0: model_name = "openrouter/auto"; break;
+        case 1: model_name = "openrouter/free"; break;
+        case 2: model_name = "microsoft/mai-code-1"; break;
+        case 3: model_name = "thudm/glm-4"; break;
+        case 4: model_name = "x-ai/grok-3"; break;
+        case 5: model_name = "qwen/qwen3-235b-a22b"; break;
+        default: model_name = "openrouter/auto"; break;
+    }
+    json_object_set_new(root, "model", json_string(model_name));
+    json_object_set_new(root, "max_tokens", json_integer(lumila_config_get_max_tokens()));
+    json_object_set_new(root, "temperature", json_real(lumila_config_get_temperature()));
+    json_object_set_new(root, "top_p", json_real(lumila_config_get_top_p()));
+    json_object_set_new(root, "frequency_penalty", json_real(lumila_config_get_repeat_penalty() - 1.0));
+    json_object_set_new(root, "stream", json_true());
+
+    json_t *messages = json_array();
+    json_t *msg_obj = json_object();
+    json_object_set_new(msg_obj, "role", json_string("user"));
+    json_object_set_new(msg_obj, "content", json_string(message));
+    json_array_append_new(messages, msg_obj);
+    json_object_set_new(root, "messages", messages);
+
+    gchar *json_body = json_dumps(root, 0);
+    json_decref(root);
+
+    SoupMessage *msg = soup_message_new("POST", OPENROUTER_API_BASE);
+    soup_message_headers_append(soup_message_get_request_headers(msg), "Content-Type", "application/json");
+    gchar *auth_header = g_strdup_printf("Bearer %s", api_key);
+    soup_message_headers_append(soup_message_get_request_headers(msg), "Authorization", auth_header);
+    g_free(auth_header);
+    soup_message_headers_append(soup_message_get_request_headers(msg), "HTTP-Referer", "https://github.com/ivangsosa/lumila-ai");
+    soup_message_headers_append(soup_message_get_request_headers(msg), "X-Title", LUMILA_NAME);
+    soup_message_set_request_body_from_bytes(msg, "application/json", g_bytes_new(json_body, strlen(json_body)));
+    g_free(json_body);
+
+    LumilaStreamState *state = lumila_stream_state_new(provider->cancellable,
+                                                        chunk_cb, final_cb, user_data);
+    lumila_provider_base_stream_start(provider->session, msg, state);
+}
+#endif

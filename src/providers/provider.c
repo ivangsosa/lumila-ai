@@ -100,6 +100,7 @@ void lumila_provider_free(LumilaProvider *provider)
         }
         if (provider->cancellable) {
             g_object_unref(provider->cancellable);
+            provider->cancellable = NULL;
         }
         g_free(provider);
     }

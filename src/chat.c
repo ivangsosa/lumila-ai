@@ -1,5 +1,6 @@
 #include "chat.h"
 #include "chat_ui.h"
+#include "message.h"
 #include "providers/provider.h"
 #include "providers/model_registry.h"
 #include "config.h"
@@ -29,12 +30,6 @@ static void append_message_to_view(const gchar *role, const gchar *content);
 static gchar *get_current_timestamp(void);
 static gchar *apply_file_edits(const gchar *response);
 
-typedef struct {
-    gchar *role;
-    gchar *content;
-    gchar *timestamp;
-} ChatMessage;
-
 static GtkTextView *chat_view = NULL;
 static GArray *messages = NULL;
 static LumilaProvider *current_provider = NULL;
@@ -59,7 +54,7 @@ static gboolean stream_idle_callback(gpointer user_data)
         lumila_chat_ui_stream_end(chat_view);
         if (data->full_response) {
             gchar *cleaned = apply_file_edits(data->full_response);
-            ChatMessage msg = {
+            LumilaMessage msg = {
                 .role = g_strdup("assistant"),
                 .content = g_strdup(data->full_response),
                 .timestamp = get_current_timestamp()
@@ -125,7 +120,7 @@ static void on_stream_final(const gchar *response, gpointer user_data)
 
 void lumila_chat_init(void)
 {
-    messages = g_array_new(FALSE, FALSE, sizeof(ChatMessage));
+    messages = g_array_new(FALSE, FALSE, sizeof(LumilaMessage));
 
     // Get default provider from config
     current_provider_id = lumila_config_get_default_provider();
@@ -153,7 +148,7 @@ void lumila_chat_cleanup(void)
 
     if (messages) {
         for (guint i = 0; i < messages->len; i++) {
-            ChatMessage *msg = &g_array_index(messages, ChatMessage, i);
+            LumilaMessage *msg = &g_array_index(messages, LumilaMessage, i);
             g_free(msg->role);
             g_free(msg->content);
             g_free(msg->timestamp);
@@ -165,6 +160,11 @@ void lumila_chat_cleanup(void)
     if (current_provider) {
         lumila_provider_free(current_provider);
         current_provider = NULL;
+    }
+
+    if (stream_response) {
+        g_string_free(stream_response, TRUE);
+        stream_response = NULL;
     }
 
     g_free(conversation_id);
@@ -322,7 +322,7 @@ static void on_response_received(const gchar *response, gpointer user_data)
     if (response) {
         gchar *cleaned_response = apply_file_edits(response);
 
-        ChatMessage msg = {
+        LumilaMessage msg = {
             .role = g_strdup("assistant"),
             .content = g_strdup(response),
             .timestamp = get_current_timestamp()
@@ -356,7 +356,7 @@ static gchar *build_history_context(void)
 
     /* Do not include the very last message (the one being sent now) */
     for (guint i = 0; i < messages->len - 1; i++) {
-        ChatMessage *msg = &g_array_index(messages, ChatMessage, i);
+        LumilaMessage *msg = &g_array_index(messages, LumilaMessage, i);
         if (g_str_equal(msg->role, "user")) {
             g_string_append_printf(history, "User: %s\n", msg->content);
         } else {
@@ -367,12 +367,46 @@ static gchar *build_history_context(void)
     return g_string_free(history, FALSE);
 }
 
+static gchar *process_slash_command(const gchar *message)
+{
+    if (!message || message[0] != '/') return g_strdup(message);
+
+    const gchar *cmd = message + 1;
+    while (*cmd == ' ') cmd++;
+
+    if (g_str_has_prefix(cmd, "explain")) {
+        const gchar *rest = cmd + 7;
+        while (*rest == ' ') rest++;
+        return g_strdup_printf("Explain the following code in detail:\n\n%s", rest);
+    }
+    if (g_str_has_prefix(cmd, "refactor")) {
+        const gchar *rest = cmd + 8;
+        while (*rest == ' ') rest++;
+        return g_strdup_printf("Refactor the following code to improve readability and performance. Keep the same functionality:\n\n%s", rest);
+    }
+    if (g_str_has_prefix(cmd, "test")) {
+        const gchar *rest = cmd + 4;
+        while (*rest == ' ') rest++;
+        return g_strdup_printf("Write comprehensive unit tests for the following code:\n\n%s", rest);
+    }
+    if (g_str_has_prefix(cmd, "doc")) {
+        const gchar *rest = cmd + 3;
+        while (*rest == ' ') rest++;
+        return g_strdup_printf("Generate documentation (docstrings/comments) for the following code:\n\n%s", rest);
+    }
+
+    return g_strdup(message);
+}
+
 void lumila_chat_send_message(const gchar *message)
 {
     if (!message || !*message) return;
 
+    // Process slash commands
+    gchar *processed = process_slash_command(message);
+
     // Add user message
-    ChatMessage msg = {
+    LumilaMessage msg = {
         .role = g_strdup("user"),
         .content = g_strdup(message),
         .timestamp = get_current_timestamp()
@@ -403,14 +437,16 @@ void lumila_chat_send_message(const gchar *message)
     gchar *complete_message;
 
     if ((history && *history) && (files_context && *files_context)) {
-        complete_message = g_strdup_printf("%s%s\n%s\n%s", SYSTEM_PROMPT, history, files_context, message);
+        complete_message = g_strdup_printf("%s%s\n%s\n%s", SYSTEM_PROMPT, history, files_context, processed);
     } else if (history && *history) {
-        complete_message = g_strdup_printf("%s%s\n%s", SYSTEM_PROMPT, history, message);
+        complete_message = g_strdup_printf("%s%s\n%s", SYSTEM_PROMPT, history, processed);
     } else if (files_context && *files_context) {
-        complete_message = g_strdup_printf("%s%s\n%s", SYSTEM_PROMPT, files_context, message);
+        complete_message = g_strdup_printf("%s%s\n%s", SYSTEM_PROMPT, files_context, processed);
     } else {
-        complete_message = g_strdup_printf("%s%s", SYSTEM_PROMPT, message);
+        complete_message = g_strdup_printf("%s%s", SYSTEM_PROMPT, processed);
     }
+
+    g_free(processed);
 
     // Send to provider
     if (current_provider) {
@@ -428,6 +464,84 @@ void lumila_chat_send_message(const gchar *message)
     g_free(complete_message);
     g_free(files_context);
     g_free(history);
+}
+
+void lumila_chat_send_selection(void)
+{
+    GeanyDocument *doc = document_get_current();
+    if (!doc || !doc->editor || !doc->editor->sci) {
+        append_message_to_view("system", "Error: No active document");
+        return;
+    }
+
+    ScintillaObject *sci = doc->editor->sci;
+    gint start = sci_get_selection_start(sci);
+    gint end = sci_get_selection_end(sci);
+
+    if (start >= end) {
+        append_message_to_view("system", "Error: No text selected");
+        return;
+    }
+
+    gchar *selection = sci_get_contents_range(sci, start, end);
+    if (!selection || !*selection) {
+        g_free(selection);
+        append_message_to_view("system", "Error: Selection is empty");
+        return;
+    }
+
+    gchar *filename = g_path_get_basename(doc->file_name ? doc->file_name : "untitled");
+    gchar *message = g_strdup_printf("[Selection from %s]\n```\n%s\n```\n", filename, selection);
+
+    lumila_chat_send_message(message);
+
+    g_free(message);
+    g_free(selection);
+    g_free(filename);
+}
+
+void lumila_chat_export_markdown(void)
+{
+    if (!messages || messages->len == 0) {
+        append_message_to_view("system", "Error: No messages to export");
+        return;
+    }
+
+    gchar *export_dir = g_build_filename(history_dir, "..", "exports", NULL);
+    g_mkdir_with_parents(export_dir, 0755);
+
+    GDateTime *now = g_date_time_new_now_local();
+    gchar *timestamp = g_date_time_format(now, "%Y%m%d-%H%M%S");
+    gchar *filename = g_strdup_printf("conversation-%s.md", timestamp);
+    gchar *filepath = g_build_filename(export_dir, filename, NULL);
+    g_free(timestamp);
+    g_date_time_unref(now);
+
+    GString *md = g_string_new("# Lumila AI Conversation\n\n");
+
+    for (guint i = 0; i < messages->len; i++) {
+        LumilaMessage *msg = &g_array_index(messages, LumilaMessage, i);
+        const gchar *role_label = g_str_equal(msg->role, "user") ? "User" : "Assistant";
+        g_string_append_printf(md, "## %s (%s)\n\n", role_label, msg->timestamp);
+        g_string_append_printf(md, "%s\n\n---\n\n", msg->content);
+    }
+
+    GError *error = NULL;
+    if (!g_file_set_contents(filepath, md->str, -1, &error)) {
+        gchar *err = g_strdup_printf("Error exporting: %s", error->message);
+        append_message_to_view("system", err);
+        g_free(err);
+        g_error_free(error);
+    } else {
+        gchar *info = g_strdup_printf("Exported to: %s", filepath);
+        append_message_to_view("system", info);
+        g_free(info);
+    }
+
+    g_string_free(md, TRUE);
+    g_free(filepath);
+    g_free(filename);
+    g_free(export_dir);
 }
 
 void lumila_chat_set_provider(gint provider_id)
@@ -464,7 +578,7 @@ void lumila_chat_save_history(void)
     // Add messages array
     json_t *msgs_array = json_array();
     for (guint i = 0; i < messages->len; i++) {
-        ChatMessage *msg = &g_array_index(messages, ChatMessage, i);
+        LumilaMessage *msg = &g_array_index(messages, LumilaMessage, i);
         json_t *msg_obj = json_object();
         json_object_set_new(msg_obj, "role", json_string(msg->role));
         json_object_set_new(msg_obj, "content", json_string(msg->content));
@@ -491,7 +605,7 @@ void lumila_chat_new_conversation(void)
     // Clear messages
     if (messages) {
         for (guint i = 0; i < messages->len; i++) {
-            ChatMessage *msg = &g_array_index(messages, ChatMessage, i);
+            LumilaMessage *msg = &g_array_index(messages, LumilaMessage, i);
             g_free(msg->role);
             g_free(msg->content);
             g_free(msg->timestamp);
@@ -531,7 +645,7 @@ void lumila_chat_load_conversation(const gchar *filename)
     // Clear current messages and UI
     if (messages) {
         for (guint i = 0; i < messages->len; i++) {
-            ChatMessage *msg = &g_array_index(messages, ChatMessage, i);
+            LumilaMessage *msg = &g_array_index(messages, LumilaMessage, i);
             g_free(msg->role);
             g_free(msg->content);
             g_free(msg->timestamp);
@@ -547,8 +661,8 @@ void lumila_chat_load_conversation(const gchar *filename)
     if (!loaded) return;
 
     for (guint i = 0; i < loaded->len; i++) {
-        ChatMessage *src = &g_array_index(loaded, ChatMessage, i);
-        ChatMessage msg = {
+        LumilaMessage *src = &g_array_index(loaded, LumilaMessage, i);
+        LumilaMessage msg = {
             .role = g_strdup(src->role),
             .content = g_strdup(src->content),
             .timestamp = g_strdup(src->timestamp)
@@ -557,13 +671,7 @@ void lumila_chat_load_conversation(const gchar *filename)
         append_message_to_view(msg.role, msg.content);
     }
 
-    for (guint i = 0; i < loaded->len; i++) {
-        ChatMessage *msg = &g_array_index(loaded, ChatMessage, i);
-        g_free(msg->role);
-        g_free(msg->content);
-        g_free(msg->timestamp);
-    }
-    g_array_free(loaded, TRUE);
+    lumila_history_free_messages(loaded);
 
     // Update conversation ID from filename
     g_free(conversation_id);

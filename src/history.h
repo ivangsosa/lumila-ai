@@ -2,6 +2,7 @@
 #define LUMILA_HISTORY_H
 
 #include <gtk/gtk.h>
+#include "message.h"
 
 typedef struct {
     gchar *filename;
@@ -14,6 +15,7 @@ GList *lumila_history_list(void);
 void lumila_history_entry_free(LumilaHistoryEntry *entry);
 
 GArray *lumila_history_load_messages(const gchar *filename);
+void lumila_history_free_messages(GArray *msgs);
 gboolean lumila_history_delete(const gchar *filename);
 gboolean lumila_history_rename(const gchar *old_filename, const gchar *new_title);
 

@@ -31,6 +31,20 @@ static void on_send_clicked(GtkButton *button, gpointer user_data)
     g_free(text);
 }
 
+static void on_send_selection_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+    (void)user_data;
+    lumila_chat_send_selection();
+}
+
+static void on_export_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+    (void)user_data;
+    lumila_chat_export_markdown();
+}
+
 static void on_provider_changed(GtkComboBox *combo, gpointer user_data)
 {
     (void)user_data;
@@ -173,27 +187,39 @@ void lumila_sidebar_init(void)
     gtk_widget_set_no_show_all(status_label, TRUE);
     gtk_box_pack_start(GTK_BOX(chat_page), status_label, FALSE, FALSE, 0);
 
-    // Buttons container
-    GtkWidget *buttons_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    // Buttons container (two rows)
+    GtkWidget *buttons_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
 
+    GtkWidget *row1 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     GtkWidget *history_button = gtk_button_new_with_label(_("History"));
     g_signal_connect(history_button, "clicked", G_CALLBACK(on_history_clicked), stack);
-    gtk_box_pack_start(GTK_BOX(buttons_box), history_button, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(row1), history_button, TRUE, TRUE, 0);
 
     GtkWidget *new_chat_button = gtk_button_new_with_label(_("New Chat"));
     g_signal_connect(new_chat_button, "clicked", G_CALLBACK(on_new_chat_clicked), NULL);
-    gtk_box_pack_start(GTK_BOX(buttons_box), new_chat_button, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(row1), new_chat_button, TRUE, TRUE, 0);
+
+    GtkWidget *export_button = gtk_button_new_with_label(_("Export MD"));
+    g_signal_connect(export_button, "clicked", G_CALLBACK(on_export_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(row1), export_button, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(buttons_vbox), row1, FALSE, FALSE, 0);
+
+    GtkWidget *row2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget *send_sel_button = gtk_button_new_with_label(_("Send Selection"));
+    g_signal_connect(send_sel_button, "clicked", G_CALLBACK(on_send_selection_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(row2), send_sel_button, TRUE, TRUE, 0);
 
     send_button = gtk_button_new_with_label(_("Send"));
     g_signal_connect(send_button, "clicked", G_CALLBACK(on_send_clicked), NULL);
-    gtk_box_pack_start(GTK_BOX(buttons_box), send_button, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(row2), send_button, TRUE, TRUE, 0);
 
     cancel_button = gtk_button_new_with_label(_("Cancel"));
     g_signal_connect(cancel_button, "clicked", G_CALLBACK(on_cancel_clicked), NULL);
     gtk_widget_set_sensitive(cancel_button, FALSE);
-    gtk_box_pack_start(GTK_BOX(buttons_box), cancel_button, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(row2), cancel_button, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(buttons_vbox), row2, FALSE, FALSE, 0);
 
-    gtk_box_pack_start(GTK_BOX(chat_page), buttons_box, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(chat_page), buttons_vbox, FALSE, FALSE, 0);
 
     gtk_stack_add_named(GTK_STACK(stack), chat_page, "chat");
 

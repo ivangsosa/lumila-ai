@@ -9,6 +9,7 @@ lumila_ai_la_SOURCES = \
 	chat.h \
 	chat_ui.c \
 	chat_ui.h \
+	message.h \
 	history.c \
 	history.h \
 	history_ui.c \
@@ -17,6 +18,8 @@ lumila_ai_la_SOURCES = \
 	config.h \
 	providers/provider.c \
 	providers/provider.h \
+	providers/provider_base.c \
+	providers/provider_base.h \
 	providers/model_registry.c \
 	providers/model_registry.h \
 	providers/openai.c \
