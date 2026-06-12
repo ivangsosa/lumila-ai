@@ -15,8 +15,11 @@ AI Assistant plugin for Geany editor with multi-provider support, persistent his
   - Crea archivos nuevos si no existen
   - Resumen de cambios en el chat
 - **Streaming de respuestas** (OpenAI, DeepSeek, Mistral, OpenRouter, Moonshot con libsoup-3.0): texto en tiempo real
-- **Slash commands** rápidos: `/explain`, `/refactor`, `/test`, `/doc`
+- **Slash commands** rápidos: `/explain`, `/refactor`, `/test`, `/doc`, `/fix`, `/commit`, `/review`
 - **Send Selection**: envía el texto seleccionado en el editor como contexto
+- **Send Current File**: envía el archivo activo completo como contexto
+- **@referencias en el chat**: escribí `@main.c` en el input para incluir cualquier archivo como contexto
+- **Modo Ask**: toggle que desactiva la edición de archivos para consultas rápidas sin modificaciones
 - **Exportar a Markdown**: guarda la conversación actual como `.md`
 - **Modelos custom** vía `config.json`: sobrescribe el modelo de cualquier provider
 - **Historial de conversaciones persistente**
@@ -188,23 +191,48 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
 - Clic en **History** para ver conversaciones guardadas
 - **Continue**: carga una conversación anterior en el chat activo y vuelve automáticamente al chat
 - **Delete**: elimina una conversación del historial (con confirmación previa)
+- **Búsqueda**: filtrá conversaciones por título o contenido desde el campo de búsqueda en la parte superior
 - Los títulos se guardan en el JSON y se restauran al recargar, sin perderse al reiniciar Geany
 - Las conversaciones se guardan automáticamente al crear una nueva o cerrar Geany
 
 ### Slash Commands
 
-Escribí un comando rápido en el input para transformar tu mensaje:
+Escribí un comando rápido en el input para transformar tu mensaje. Los comandos `/explain`, `/refactor`, `/test` y `/doc` incluyen automáticamente el archivo activo como contexto:
 
-- `/explain` — Explica el código seleccionado o del contexto
+- `/explain` — Explica el código del archivo activo
 - `/refactor` — Refactoriza para mejorar legibilidad
 - `/test` — Genera tests unitarios
 - `/doc` — Genera documentación
+- `/fix` — Encuentra y corrige bugs en el archivo activo
+- `/commit` — Genera un mensaje de commit convencional desde `git diff`
+- `/review` — Revisa el archivo activo buscando bugs, seguridad y performance
 
 Ejemplo: `/explain esta función`
 
 ### Send Selection
 
 Seleccioná texto en el editor y presioná **Send Selection**. El plugin enviará solo esa porción como contexto, sin necesidad de copiar y pegar.
+
+### Send Current File
+
+Presioná **Send File** para enviar el contenido completo del archivo activo como contexto. Útil cuando necesitás que la IA vea todo el archivo, no solo una selección.
+
+### @referencias en el chat
+
+Incluí cualquier archivo del proyecto escribiendo `@nombre.ext` en el input del chat. El plugin busca el archivo en el directorio del documento actual o en la ruta absoluta, lo lee y lo incluye automáticamente como contexto:
+
+```
+Revisá @utils.c y decime si hay memory leaks
+```
+
+Funciona con rutas relativas (`@src/main.c`) o nombres de archivo simples (`@main.c`).
+
+### Modo Ask
+
+Activá el toggle **Ask** en la barra de botones para entrar en modo consulta. En este modo:
+- La IA responde **sin modificar archivos** (ignora bloques ` ```file: `)
+- Ideal para explicaciones, brainstorming o preguntas rápidas sin riesgo de que toque tu código
+- Desactivá el toggle para volver al modo normal con edición de archivos habilitada
 
 ### Syntax Highlighting
 
@@ -266,22 +294,28 @@ Agregá un modelo propio en `config.json` sin recompilar:
 
 Dejá vacío (`""`) para usar el modelo por defecto del provider.
 
-## Roadmap / Características futuras
+## Roadmap
 
-Implementadas recientemente:
+### Medias (requieren trabajo adicional)
 
-- [x] **Historial — Auto-back to chat**: al presionar **Continue**, vuelve automáticamente al chat
-- [x] **Historial — Persistencia de títulos**: títulos guardados en JSON, se restauran al cargar
-- [x] **Historial — Fuente pequeña**: títulos legibles sin estirar el panel
-- [x] **Historial — Confirmación de eliminación**: diálogo modal Yes/No antes de borrar
-- [x] **Chat — Bloques de código separados**: fondo oscuro (`#16162a`), márgenes y separación visual
-- [x] **Chat — Syntax highlighting mejorado**: 20+ lenguajes con lexer completo (comentarios multilínea, strings, números hex/oct/bin, HTML tags, CSS properties, shell vars)
-- [x] **Chat — Enviar con Enter**: `Enter` envía, `Shift+Enter` nueva línea
+- [ ] **Error-aware / fix build**: capturar la salida de la ventana *Messages* de Geany para que `/fix` envíe error + archivo + línea al modelo
+- [ ] **Ejecución de comandos**: detectar bloques ` ```bash ` y mostrar botón *Run* que ejecute el comando en el directorio del proyecto (`g_spawn_async`)
+- [ ] **Menú contextual en el editor**: integrar acciones al menú derecho de Geany — *Explain this*, *Refactor selection*, *Generate docstring*, *Add type hints*
+- [ ] **Contexto multi-archivo automático**: al enviar un mensaje, incluir automáticamente el archivo activo + archivos recientes + archivos del proyecto (`*.geany`)
+- [ ] **Modo Plan**: la IA genera un plan paso a paso antes de ejecutar cambios, permitiendo al usuario aprobar, mejorar o rechazar cada paso individualmente
+- [ ] **Previsualización diff inline**: mostrar cambios propuestos como anotaciones de Scintilla (verde/rojo) con botones *Apply* / *Discard* antes de modificar el archivo
 
-Pendientes:
+### Avanzadas (diferenciadoras, mayor esfuerzo)
 
-- [ ] **Modo Ask**: modo de consulta rápida donde la IA responde sin editar archivos (desactiva `file:` blocks)
-- [ ] **Modo Plan**: la IA genera un plan paso a paso antes de ejecutar cambios, permitiendo al usuario aprobar, mejorar o rechazar cada paso
+- [ ] **Índice de proyecto (vector search local)**: indexar archivos del proyecto (TF-IDF o embeddings livianos) para encontrar automáticamente definiciones relevantes al preguntar "¿dónde se define X?"
+- [ ] **Modo Agent / Composer**: la IA puede leer múltiples archivos, proponer cambios, pedir confirmación y aplicarlos en pasos iterativos
+- [ ] **Contexto LSP**: integrar con `geany-lsp` para capturar diagnostics (errores de tipo, lint) y enviarlos como contexto
+- [ ] **Autocompletado con IA**: sugerencias inline mientras se escribe (estilo Copilot) vía hooks de Scintilla (`char-added` + ghost text)
+
+### Infraestructura
+
+- [ ] **Tests**: unit tests (cmocka/check), integration tests (mock de providers), end-to-end tests (automatización de UI con dogtail o similar)
+- [ ] **Build multiplataforma**: compilar y distribuir binarios para Linux (AppImage/deb/rpm), Windows (MSYS2/MinGW), macOS (Homebrew)
 
 ## Troubleshooting
 
@@ -295,6 +329,28 @@ Pendientes:
 
 **Streaming no funciona**
 - Requiere `libsoup-3.0`. Si tienes `libsoup-2.4`, las respuestas llegarán completas al final
+
+### Actualización del plugin
+
+Para actualizar sin perder tu configuración (`config.json`) ni historial:
+
+```bash
+# 1. Cerrá Geany completamente (obligatorio, el .so está bloqueado en memoria)
+killall geany
+
+# 2. Descargá la última versión
+wget https://github.com/usuario/lumila-ai/releases/latest/download/lumila-ai.so \
+  -O ~/.config/geany/plugins/lumila-ai/lumila-ai.so.new
+
+# 3. Hacé backup y reemplazá
+mv ~/.config/geany/plugins/lumila-ai.so ~/.config/geany/plugins/lumila-ai.so.bak
+mv ~/.config/geany/plugins/lumila-ai/lumila-ai.so.new ~/.config/geany/plugins/lumila-ai.so
+
+# 4. Reiniciá Geany
+geany &
+```
+
+> **Nota:** El botón **Check for Updates** en el panel de Lumila muestra estas instrucciones directamente en el editor.
 
 ## License
 
