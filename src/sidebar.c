@@ -38,11 +38,63 @@ static void on_send_selection_clicked(GtkButton *button, gpointer user_data)
     lumila_chat_send_selection();
 }
 
+static void on_send_file_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+    (void)user_data;
+    lumila_chat_send_current_file();
+}
+
+static void on_ask_toggled(GtkToggleButton *toggle, gpointer user_data)
+{
+    (void)user_data;
+    lumila_chat_set_ask_mode(gtk_toggle_button_get_active(toggle));
+}
+
 static void on_export_clicked(GtkButton *button, gpointer user_data)
 {
     (void)button;
     (void)user_data;
     lumila_chat_export_markdown();
+}
+
+static void on_check_updates_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+    (void)user_data;
+
+    const gchar *instructions =
+        "# Lumila AI - Update Instructions\n\n"
+        "To update the plugin without losing your config.json or history:\n\n"
+        "## Step 1: Close Geany (required)\n\n"
+        "The .so file is locked in memory while Geany is running.\n"
+        "Close Geany completely before replacing the file.\n\n"
+        "```bash\n"
+        "killall geany\n"
+        "```\n\n"
+        "## Step 2: Download the latest version\n\n"
+        "```bash\n"
+        "wget https://github.com/usuario/lumila-ai/releases/latest/download/lumila-ai.so \\\n"
+        "  -O ~/.config/geany/plugins/lumila-ai/lumila-ai.so.new\n"
+        "```\n\n"
+        "## Step 3: Backup and replace\n\n"
+        "```bash\n"
+        "mv ~/.config/geany/plugins/lumila-ai.so \\\n"
+        "   ~/.config/geany/plugins/lumila-ai.so.bak\n"
+        "mv ~/.config/geany/plugins/lumila-ai/lumila-ai.so.new \\\n"
+        "   ~/.config/geany/plugins/lumila-ai.so\n"
+        "```\n\n"
+        "## Step 4: Restart Geany\n\n"
+        "```bash\n"
+        "geany &\n"
+        "```\n\n"
+        "Your config.json and conversation history are preserved.\n";
+
+    GeanyDocument *doc = document_new_file("lumila-update.md", NULL, NULL);
+    if (doc && doc->editor && doc->editor->sci) {
+        sci_set_text(doc->editor->sci, instructions);
+        document_set_text_changed(doc, TRUE);
+    }
 }
 
 static void on_provider_changed(GtkComboBox *combo, gpointer user_data)
@@ -211,15 +263,31 @@ void lumila_sidebar_init(void)
     g_signal_connect(send_sel_button, "clicked", G_CALLBACK(on_send_selection_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(row2), send_sel_button, TRUE, TRUE, 0);
 
+    GtkWidget *send_file_button = gtk_button_new_with_label(_("Send File"));
+    g_signal_connect(send_file_button, "clicked", G_CALLBACK(on_send_file_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(row2), send_file_button, TRUE, TRUE, 0);
+
     send_button = gtk_button_new_with_label(_("Send"));
     g_signal_connect(send_button, "clicked", G_CALLBACK(on_send_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(row2), send_button, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(buttons_vbox), row2, FALSE, FALSE, 0);
+
+    GtkWidget *row3 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
 
     cancel_button = gtk_button_new_with_label(_("Cancel"));
     g_signal_connect(cancel_button, "clicked", G_CALLBACK(on_cancel_clicked), NULL);
     gtk_widget_set_sensitive(cancel_button, FALSE);
-    gtk_box_pack_start(GTK_BOX(row2), cancel_button, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(buttons_vbox), row2, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(row3), cancel_button, TRUE, TRUE, 0);
+
+    GtkWidget *ask_toggle = gtk_toggle_button_new_with_label(_("Ask"));
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(ask_toggle), FALSE);
+    g_signal_connect(ask_toggle, "toggled", G_CALLBACK(on_ask_toggled), NULL);
+    gtk_box_pack_start(GTK_BOX(row3), ask_toggle, TRUE, TRUE, 0);
+
+    GtkWidget *update_button = gtk_button_new_with_label(_("Updates"));
+    g_signal_connect(update_button, "clicked", G_CALLBACK(on_check_updates_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(row3), update_button, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(buttons_vbox), row3, FALSE, FALSE, 0);
 
     gtk_box_pack_start(GTK_BOX(chat_page), buttons_vbox, FALSE, FALSE, 0);
 

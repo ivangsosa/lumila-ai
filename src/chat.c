@@ -38,6 +38,7 @@ static gchar *conversation_id = NULL;
 static gchar *history_dir = NULL;
 static gchar *conversation_title = NULL;
 static GString *stream_response = NULL;
+static gboolean ask_mode = FALSE;
 
 /* Idle callback data for thread-safe UI updates */
 typedef struct {
@@ -52,7 +53,7 @@ static gboolean stream_idle_callback(gpointer user_data)
 
     if (data->is_final) {
         if (data->full_response) {
-            gchar *cleaned = apply_file_edits(data->full_response);
+            gchar *cleaned = ask_mode ? NULL : apply_file_edits(data->full_response);
             lumila_chat_ui_stream_end_and_render(chat_view, data->full_response);
             LumilaMessage msg = {
                 .role = g_strdup("assistant"),
@@ -319,7 +320,7 @@ static void on_response_received(const gchar *response, gpointer user_data)
     (void)user_data;
 
     if (response) {
-        gchar *cleaned_response = apply_file_edits(response);
+        gchar *cleaned_response = ask_mode ? NULL : apply_file_edits(response);
 
         LumilaMessage msg = {
             .role = g_strdup("assistant"),
@@ -366,6 +367,69 @@ static gchar *build_history_context(void)
     return g_string_free(history, FALSE);
 }
 
+static gchar *get_current_file_content(void)
+{
+    GeanyDocument *doc = document_get_current();
+    if (!doc || !doc->editor || !doc->editor->sci) return g_strdup("");
+    const gchar *content = sci_get_contents(doc->editor->sci, -1);
+    gchar *filename = doc->file_name ? g_path_get_basename(doc->file_name) : g_strdup("current");
+    gchar *result = g_strdup_printf("[File: %s]\n```\n%s\n```", filename, content ? content : "");
+    g_free(filename);
+    return result;
+}
+
+static gchar *get_git_diff(void)
+{
+    gchar *output = NULL;
+    gint exit_status = 0;
+    g_spawn_command_line_sync("git diff --cached", &output, NULL, &exit_status, NULL);
+    if (exit_status != 0 || !output || !*output) {
+        g_free(output);
+        g_spawn_command_line_sync("git diff", &output, NULL, &exit_status, NULL);
+    }
+    if (!output || !*output) {
+        g_free(output);
+        return g_strdup("No changes detected.");
+    }
+    return output;
+}
+
+static gchar *extract_references(const gchar *message)
+{
+    GString *refs = g_string_new("");
+    const gchar *p = message;
+
+    while ((p = strchr(p, '@')) != NULL) {
+        p++;
+        const gchar *start = p;
+        while (*p && !g_ascii_isspace(*p) && *p != '\n' && *p != '\r') p++;
+        if (p == start) continue;
+
+        gchar *filename = g_strndup(start, p - start);
+        gchar *content = NULL;
+        gsize len = 0;
+
+        if (!g_file_get_contents(filename, &content, &len, NULL)) {
+            GeanyDocument *doc = document_get_current();
+            if (doc && doc->file_name) {
+                gchar *dir = g_path_get_dirname(doc->file_name);
+                gchar *path = g_build_filename(dir, filename, NULL);
+                g_file_get_contents(path, &content, &len, NULL);
+                g_free(path);
+                g_free(dir);
+            }
+        }
+
+        if (content) {
+            g_string_append_printf(refs, "\n\n[Referenced file: %s]\n```\n%s\n```", filename, content);
+            g_free(content);
+        }
+        g_free(filename);
+    }
+
+    return g_string_free(refs, FALSE);
+}
+
 static gchar *process_slash_command(const gchar *message)
 {
     if (!message || message[0] != '/') return g_strdup(message);
@@ -376,30 +440,85 @@ static gchar *process_slash_command(const gchar *message)
     if (g_str_has_prefix(cmd, "explain")) {
         const gchar *rest = cmd + 7;
         while (*rest == ' ') rest++;
-        return g_strdup_printf("Explain the following code in detail:\n\n%s", rest);
+        gchar *file_ctx = get_current_file_content();
+        gchar *result = g_strdup_printf("Explain the following code in detail:\n\n%s\n\nSpecific question: %s", file_ctx, rest);
+        g_free(file_ctx);
+        return result;
     }
     if (g_str_has_prefix(cmd, "refactor")) {
         const gchar *rest = cmd + 8;
         while (*rest == ' ') rest++;
-        return g_strdup_printf("Refactor the following code to improve readability and performance. Keep the same functionality:\n\n%s", rest);
+        gchar *file_ctx = get_current_file_content();
+        gchar *result = g_strdup_printf("Refactor the following code to improve readability and performance. Keep the same functionality:\n\n%s\n\nSpecific request: %s", file_ctx, rest);
+        g_free(file_ctx);
+        return result;
     }
     if (g_str_has_prefix(cmd, "test")) {
         const gchar *rest = cmd + 4;
         while (*rest == ' ') rest++;
-        return g_strdup_printf("Write comprehensive unit tests for the following code:\n\n%s", rest);
+        gchar *file_ctx = get_current_file_content();
+        gchar *result = g_strdup_printf("Write comprehensive unit tests for the following code:\n\n%s\n\nSpecific request: %s", file_ctx, rest);
+        g_free(file_ctx);
+        return result;
     }
     if (g_str_has_prefix(cmd, "doc")) {
         const gchar *rest = cmd + 3;
         while (*rest == ' ') rest++;
-        return g_strdup_printf("Generate documentation (docstrings/comments) for the following code:\n\n%s", rest);
+        gchar *file_ctx = get_current_file_content();
+        gchar *result = g_strdup_printf("Generate documentation (docstrings/comments) for the following code:\n\n%s\n\nSpecific request: %s", file_ctx, rest);
+        g_free(file_ctx);
+        return result;
+    }
+    if (g_str_has_prefix(cmd, "fix")) {
+        const gchar *rest = cmd + 3;
+        while (*rest == ' ') rest++;
+        gchar *file_ctx = get_current_file_content();
+        gchar *result = g_strdup_printf("Find and fix any bugs, issues or compilation errors in the following code. Explain what was wrong and provide the corrected version:\n\n%s\n\nSpecific issue: %s", file_ctx, rest);
+        g_free(file_ctx);
+        return result;
+    }
+    if (g_str_has_prefix(cmd, "commit")) {
+        gchar *diff = get_git_diff();
+        gchar *result = g_strdup_printf("Generate a concise, conventional commit message for these changes. Use the format: type(scope): description\n\nChanges:\n```diff\n%s\n```", diff);
+        g_free(diff);
+        return result;
+    }
+    if (g_str_has_prefix(cmd, "review")) {
+        const gchar *rest = cmd + 6;
+        while (*rest == ' ') rest++;
+        gchar *file_ctx = get_current_file_content();
+        gchar *result = g_strdup_printf("Review the following code for bugs, security issues, performance problems and code quality. Provide specific, actionable suggestions:\n\n%s\n\nFocus areas: %s", file_ctx, rest);
+        g_free(file_ctx);
+        return result;
     }
 
     return g_strdup(message);
 }
 
+void lumila_chat_set_ask_mode(gboolean enabled)
+{
+    ask_mode = enabled;
+}
+
+static gchar *build_system_prompt(void)
+{
+    if (ask_mode) {
+        return g_strdup(
+            "You are Lumila AI, a helpful coding assistant integrated into the Geany editor. "
+            "You are in ASK mode — the user wants a consultation without any file modifications. "
+            "DO NOT use ```file: blocks or suggest file edits. "
+            "Provide explanations, suggestions, and code examples in regular markdown blocks.\n\n"
+        );
+    }
+    return g_strdup(SYSTEM_PROMPT);
+}
+
 void lumila_chat_send_message(const gchar *message)
 {
     if (!message || !*message) return;
+
+    // Extract @references
+    gchar *refs = extract_references(message);
 
     // Process slash commands
     gchar *processed = process_slash_command(message);
@@ -432,20 +551,27 @@ void lumila_chat_send_message(const gchar *message)
     // Build conversation history context
     gchar *history = build_history_context();
 
-    // Build complete message with system prompt, history and file context
+    // Build complete message with system prompt, history, file context, references and processed message
     gchar *complete_message;
+    gchar *sys_prompt = build_system_prompt();
 
-    if ((history && *history) && (files_context && *files_context)) {
-        complete_message = g_strdup_printf("%s%s\n%s\n%s", SYSTEM_PROMPT, history, files_context, processed);
-    } else if (history && *history) {
-        complete_message = g_strdup_printf("%s%s\n%s", SYSTEM_PROMPT, history, processed);
-    } else if (files_context && *files_context) {
-        complete_message = g_strdup_printf("%s%s\n%s", SYSTEM_PROMPT, files_context, processed);
-    } else {
-        complete_message = g_strdup_printf("%s%s", SYSTEM_PROMPT, processed);
+    GString *parts = g_string_new(sys_prompt);
+    if (history && *history) {
+        g_string_append_printf(parts, "%s\n", history);
     }
+    if (files_context && *files_context) {
+        g_string_append_printf(parts, "%s\n", files_context);
+    }
+    if (refs && *refs) {
+        g_string_append_printf(parts, "%s\n", refs);
+    }
+    g_string_append(parts, processed);
 
+    complete_message = g_string_free(parts, FALSE);
+
+    g_free(sys_prompt);
     g_free(processed);
+    g_free(refs);
 
     // Send to provider
     if (current_provider) {
@@ -496,6 +622,29 @@ void lumila_chat_send_selection(void)
 
     g_free(message);
     g_free(selection);
+    g_free(filename);
+}
+
+void lumila_chat_send_current_file(void)
+{
+    GeanyDocument *doc = document_get_current();
+    if (!doc || !doc->editor || !doc->editor->sci) {
+        append_message_to_view("system", "Error: No active document");
+        return;
+    }
+
+    const gchar *content = sci_get_contents(doc->editor->sci, -1);
+    if (!content || !*content) {
+        append_message_to_view("system", "Error: File is empty");
+        return;
+    }
+
+    gchar *filename = g_path_get_basename(doc->file_name ? doc->file_name : "untitled");
+    gchar *message = g_strdup_printf("[Full content of %s]\n```\n%s\n```\n", filename, content);
+
+    lumila_chat_send_message(message);
+
+    g_free(message);
     g_free(filename);
 }
 

@@ -5,6 +5,7 @@
 
 static GtkWidget *history_list = NULL;
 static GtkWidget *stack_ref = NULL;
+static gchar *search_filter = NULL;
 
 static void on_continue_clicked(GtkButton *button, gpointer user_data)
 {
@@ -97,6 +98,27 @@ static GtkWidget *create_history_row(LumilaHistoryEntry *entry)
     return row;
 }
 
+static gboolean entry_matches_search(LumilaHistoryEntry *entry, const gchar *filter)
+{
+    if (!filter || !*filter) return TRUE;
+
+    gchar *title_lower = g_utf8_strdown(entry->title ? entry->title : "", -1);
+    gchar *file_lower = g_utf8_strdown(entry->filename ? entry->filename : "", -1);
+    gchar *model_lower = g_utf8_strdown(entry->model_name ? entry->model_name : "", -1);
+    gchar *filter_lower = g_utf8_strdown(filter, -1);
+
+    gboolean match = (strstr(title_lower, filter_lower) != NULL) ||
+                     (strstr(file_lower, filter_lower) != NULL) ||
+                     (strstr(model_lower, filter_lower) != NULL);
+
+    g_free(title_lower);
+    g_free(file_lower);
+    g_free(model_lower);
+    g_free(filter_lower);
+
+    return match;
+}
+
 void lumila_history_ui_refresh(void)
 {
     if (!history_list) return;
@@ -110,12 +132,22 @@ void lumila_history_ui_refresh(void)
     GList *entries = lumila_history_list();
     for (GList *l = entries; l != NULL; l = l->next) {
         LumilaHistoryEntry *entry = (LumilaHistoryEntry *)l->data;
-        GtkWidget *row = create_history_row(entry);
-        gtk_container_add(GTK_CONTAINER(history_list), row);
+        if (entry_matches_search(entry, search_filter)) {
+            GtkWidget *row = create_history_row(entry);
+            gtk_container_add(GTK_CONTAINER(history_list), row);
+        }
     }
 
     g_list_free_full(entries, (GDestroyNotify)lumila_history_entry_free);
     gtk_widget_show_all(history_list);
+}
+
+static void on_search_changed(GtkEntry *entry, gpointer user_data)
+{
+    (void)user_data;
+    g_free(search_filter);
+    search_filter = g_strdup(gtk_entry_get_text(entry));
+    lumila_history_ui_refresh();
 }
 
 static void on_back_clicked(GtkButton *button, gpointer user_data)
@@ -142,6 +174,11 @@ GtkWidget *lumila_history_ui_create(GtkWidget *stack)
     gtk_box_pack_start(GTK_BOX(header), title, TRUE, TRUE, 0);
 
     gtk_box_pack_start(GTK_BOX(page), header, FALSE, FALSE, 0);
+
+    GtkWidget *search_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(search_entry), "Search conversations...");
+    g_signal_connect(search_entry, "changed", G_CALLBACK(on_search_changed), NULL);
+    gtk_box_pack_start(GTK_BOX(page), search_entry, FALSE, FALSE, 0);
 
     GtkWidget *scrolled = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled),
