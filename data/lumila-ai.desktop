@@ -4,6 +4,6 @@ Comment=AI Assistant for Geany - Multi-provider Chat
 Type=Addon
 X-Geany-Plugin-Name=lumila-ai
 X-Geany-Plugin-Description=AI-powered coding assistant with support for OpenAI, Anthropic, Google, DeepSeek, Mistral, OpenRouter and Ollama
-X-Geany-Plugin-Version=0.6.0
+X-Geany-Plugin-Version=0.7.0
 X-Geany-Plugin-Author=Iván Gabriel Sosa
 X-Geany-Plugin-Package=lumila-ai
