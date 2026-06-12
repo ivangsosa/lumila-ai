@@ -180,11 +180,16 @@ static void openrouter_send_message(LumilaProvider *provider, const gchar *messa
 
     // Build JSON request (OpenAI-compatible format)
     json_t *root = json_object();
+
     // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
         case 0: model_name = "openrouter/auto"; break;
         case 1: model_name = "openrouter/free"; break;
+        case 2: model_name = "microsoft/mai-code-1"; break;           // MAI-Code-1
+        case 3: model_name = "thudm/glm-4"; break;                     // GLM-4
+        case 4: model_name = "x-ai/grok-3"; break;                     // Grok 3
+        case 5: model_name = "qwen/qwen3-235b-a22b"; break;            // Qwen3-235B
         default: model_name = "openrouter/auto"; break;
     }
 

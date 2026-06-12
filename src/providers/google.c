@@ -188,9 +188,10 @@ static void google_send_message(LumilaProvider *provider, const gchar *message,
     // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "gemini-2.5-flash-preview-05-20"; break;  // Gemini 2.5 Flash
-        case 1: model_name = "gemini-2.5-pro-preview-05-20"; break;   // Gemini 2.5 Pro
-        default: model_name = "gemini-2.5-flash-preview-05-20"; break;
+        case 0: model_name = "gemini-2.5-flash"; break;  // Gemini 2.5 Flash
+        case 1: model_name = "gemini-2.5-pro"; break;   // Gemini 2.5 Pro
+        case 2: model_name = "gemma-4-12b-it"; break;      // Gemma 4 12B
+        default: model_name = "gemini-2.5-flash"; break;
     }
 
     // Build URL (API key sent via header for security)

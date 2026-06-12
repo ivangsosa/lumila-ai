@@ -2,6 +2,7 @@
 #include "openai.h"
 #include "anthropic.h"
 #include "google.h"
+#include "moonshot.h"
 #include "ollama.h"
 #include "openrouter.h"
 #include "deepseek.h"
@@ -14,7 +15,7 @@ const gchar *lumila_provider_get_key_name(LumilaProviderType type)
         case LUMILA_PROVIDER_OPENAI: return "openai";
         case LUMILA_PROVIDER_ANTHROPIC: return "anthropic";
         case LUMILA_PROVIDER_GOOGLE: return "google";
-        case LUMILA_PROVIDER_KIMI: return "kimi";
+        case LUMILA_PROVIDER_MOONSHOT: return "moonshot";
         case LUMILA_PROVIDER_OPENROUTER: return "openrouter";
         case LUMILA_PROVIDER_OLLAMA: return "ollama";
         case LUMILA_PROVIDER_DEEPSEEK: return "deepseek";
@@ -29,7 +30,7 @@ const gchar *lumila_provider_get_name(LumilaProviderType type)
         case LUMILA_PROVIDER_OPENAI: return "OpenAI";
         case LUMILA_PROVIDER_ANTHROPIC: return "Anthropic";
         case LUMILA_PROVIDER_GOOGLE: return "Google";
-        case LUMILA_PROVIDER_KIMI: return "Kimi";
+        case LUMILA_PROVIDER_MOONSHOT: return "Moonshot";
         case LUMILA_PROVIDER_OPENROUTER: return "OpenRouter";
         case LUMILA_PROVIDER_OLLAMA: return "Ollama";
         case LUMILA_PROVIDER_DEEPSEEK: return "DeepSeek";
@@ -81,9 +82,8 @@ LumilaProvider *lumila_provider_create(LumilaProviderType type)
             return deepseek_provider_new();
         case LUMILA_PROVIDER_MISTRAL:
             return mistral_provider_new();
-        case LUMILA_PROVIDER_KIMI:
-            // Not implemented yet, fallback to OpenAI
-            return openai_provider_new();
+        case LUMILA_PROVIDER_MOONSHOT:
+            return moonshot_provider_new();
         default:
             return openai_provider_new();
     }

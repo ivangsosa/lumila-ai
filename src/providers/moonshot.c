@@ -1,18 +1,18 @@
-#include "openai.h"
+#include "moonshot.h"
 #include "../config.h"
 #include <jansson.h>
 #include <string.h>
 #include <libsoup/soup.h>
 
-#define OPENAI_API_BASE "https://api.openai.com/v1/chat/completions"
+#define MOONSHOT_API_BASE "https://api.moonshot.cn/v1/chat/completions"
 
-static void openai_send_message(LumilaProvider *provider, const gchar *message,
-                                 LumilaResponseCallback callback, gpointer user_data);
-static void openai_send_message_stream(LumilaProvider *provider, const gchar *message,
-                                        LumilaChunkCallback chunk_cb,
-                                        LumilaResponseCallback final_cb,
-                                        gpointer user_data);
-static void openai_cancel(LumilaProvider *provider);
+static void moonshot_send_message(LumilaProvider *provider, const gchar *message,
+                               LumilaResponseCallback callback, gpointer user_data);
+static void moonshot_send_message_stream(LumilaProvider *provider, const gchar *message,
+                                      LumilaChunkCallback chunk_cb,
+                                      LumilaResponseCallback final_cb,
+                                      gpointer user_data);
+static void moonshot_cancel(LumilaProvider *provider);
 
 typedef struct {
     LumilaProvider base;
@@ -22,7 +22,7 @@ typedef struct {
     gpointer user_data;
     GString *stream_buffer;
     GInputStream *stream;
-} OpenAIProvider;
+} MoonshotProvider;
 
 #if SOUP_CHECK_VERSION(3, 0, 0)
 static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user_data);
@@ -30,11 +30,11 @@ static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user
 static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer user_data);
 #endif
 
-LumilaProvider *openai_provider_new(void)
+LumilaProvider *moonshot_provider_new(void)
 {
-    OpenAIProvider *provider = g_new0(OpenAIProvider, 1);
+    MoonshotProvider *provider = g_new0(MoonshotProvider, 1);
 
-    provider->base.type = LUMILA_PROVIDER_OPENAI;
+    provider->base.type = LUMILA_PROVIDER_MOONSHOT;
 #if SOUP_CHECK_VERSION(3, 0, 0)
     provider->base.session = soup_session_new_with_options(
         "timeout", 60,
@@ -45,13 +45,13 @@ LumilaProvider *openai_provider_new(void)
         NULL);
 #endif
     provider->base.cancellable = g_cancellable_new();
-    provider->base.send_message = openai_send_message;
+    provider->base.send_message = moonshot_send_message;
 #if SOUP_CHECK_VERSION(3, 0, 0)
-    provider->base.send_message_stream = openai_send_message_stream;
+    provider->base.send_message_stream = moonshot_send_message_stream;
 #else
     provider->base.send_message_stream = NULL;
 #endif
-    provider->base.cancel = openai_cancel;
+    provider->base.cancel = moonshot_cancel;
     provider->callback = NULL;
     provider->chunk_cb = NULL;
     provider->final_cb = NULL;
@@ -62,7 +62,7 @@ LumilaProvider *openai_provider_new(void)
     return (LumilaProvider *)provider;
 }
 
-static void openai_cancel(LumilaProvider *provider)
+static void moonshot_cancel(LumilaProvider *provider)
 {
     if (provider && provider->cancellable) {
         g_cancellable_cancel(provider->cancellable);
@@ -76,7 +76,7 @@ static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user
 {
     (void)source;
 
-    OpenAIProvider *provider = (OpenAIProvider *)user_data;
+    MoonshotProvider *provider = (MoonshotProvider *)user_data;
     LumilaResponseCallback callback = provider->callback;
     gpointer cb_data = provider->user_data;
 
@@ -140,7 +140,7 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
 {
     (void)session;
 
-    OpenAIProvider *provider = (OpenAIProvider *)user_data;
+    MoonshotProvider *provider = (MoonshotProvider *)user_data;
     LumilaResponseCallback callback = provider->callback;
     gpointer cb_data = provider->user_data;
 
@@ -178,15 +178,15 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
 }
 #endif
 
-static void openai_send_message(LumilaProvider *provider, const gchar *message,
-                                 LumilaResponseCallback callback, gpointer user_data)
+static void moonshot_send_message(LumilaProvider *provider, const gchar *message,
+                               LumilaResponseCallback callback, gpointer user_data)
 {
-    OpenAIProvider *oa = (OpenAIProvider *)provider;
+    MoonshotProvider *kp = (MoonshotProvider *)provider;
 
-    oa->callback = callback;
-    oa->user_data = user_data;
+    msp->callback = callback;
+    msp->user_data = user_data;
 
-    const gchar *api_key = lumila_config_get_api_key(LUMILA_PROVIDER_OPENAI);
+    const gchar *api_key = lumila_config_get_api_key(LUMILA_PROVIDER_MOONSHOT);
     if (!api_key || !*api_key) {
         if (callback) {
             callback("Error: API key not configured", user_data);
@@ -200,10 +200,8 @@ static void openai_send_message(LumilaProvider *provider, const gchar *message,
     // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "gpt-4.1"; break;       // GPT-4.1
-        case 1: model_name = "gpt-4.1-mini"; break;  // GPT-4.1 mini
-        case 2: model_name = "gpt-4.1-nano"; break;  // GPT-4.1 nano
-        default: model_name = "gpt-4.1"; break;
+        case 0: model_name = "kimi-k2-6"; break;
+        default: model_name = "kimi-k2-6"; break;
     }
 
     json_object_set_new(root, "model", json_string(model_name));
@@ -223,7 +221,7 @@ static void openai_send_message(LumilaProvider *provider, const gchar *message,
     json_decref(root);
 
 #if SOUP_CHECK_VERSION(3, 0, 0)
-    SoupMessage *msg = soup_message_new("POST", OPENAI_API_BASE);
+    SoupMessage *msg = soup_message_new("POST", MOONSHOT_API_BASE);
 
     soup_message_headers_append(soup_message_get_request_headers(msg), "Content-Type", "application/json");
 
@@ -235,11 +233,11 @@ static void openai_send_message(LumilaProvider *provider, const gchar *message,
     g_free(json_body);
 
     // Send async
-    soup_session_send_and_read_async(provider->session, msg, G_PRIORITY_DEFAULT, 
+    soup_session_send_and_read_async(provider->session, msg, G_PRIORITY_DEFAULT,
                                       provider->cancellable, on_message_sent, provider);
     g_object_unref(msg);
 #else
-    SoupMessage *msg = soup_message_new("POST", OPENAI_API_BASE);
+    SoupMessage *msg = soup_message_new("POST", MOONSHOT_API_BASE);
 
     soup_message_headers_append(msg->request_headers, "Content-Type", "application/json");
 
@@ -262,34 +260,34 @@ static void read_stream_line(GDataInputStream *data_stream, GAsyncResult *result
 static void on_stream_open(GObject *source, GAsyncResult *result, gpointer user_data)
 {
     (void)source;
-    OpenAIProvider *oa = (OpenAIProvider *)user_data;
+    MoonshotProvider *kp = (MoonshotProvider *)user_data;
 
     GError *error = NULL;
     GInputStream *stream = soup_session_send_finish(SOUP_SESSION(source), result, &error);
 
     if (error) {
-        if (oa->final_cb) {
+        if (msp->final_cb) {
             gchar *err = g_strdup_printf("Error: %s", error->message);
-            oa->final_cb(err, oa->user_data);
+            msp->final_cb(err, msp->user_data);
             g_free(err);
         }
         g_error_free(error);
-        oa->stream = NULL;
+        msp->stream = NULL;
         return;
     }
 
-    oa->stream = stream;
+    msp->stream = stream;
     GDataInputStream *data_stream = g_data_input_stream_new(stream);
     g_data_input_stream_set_newline_type(data_stream, G_DATA_STREAM_NEWLINE_TYPE_LF);
 
     g_data_input_stream_read_line_async(data_stream, G_PRIORITY_DEFAULT,
-                                        oa->base.cancellable,
-                                        (GAsyncReadyCallback)read_stream_line, oa);
+                                        msp->base.cancellable,
+                                        (GAsyncReadyCallback)read_stream_line, kp);
 }
 
 static void read_stream_line(GDataInputStream *data_stream, GAsyncResult *result, gpointer user_data)
 {
-    OpenAIProvider *oa = (OpenAIProvider *)user_data;
+    MoonshotProvider *kp = (MoonshotProvider *)user_data;
 
     GError *error = NULL;
     gsize len = 0;
@@ -297,12 +295,12 @@ static void read_stream_line(GDataInputStream *data_stream, GAsyncResult *result
 
     if (error) {
         g_object_unref(data_stream);
-        g_input_stream_close(oa->stream, NULL, NULL);
-        g_object_unref(oa->stream);
-        oa->stream = NULL;
-        if (oa->final_cb) {
+        g_input_stream_close(msp->stream, NULL, NULL);
+        g_object_unref(msp->stream);
+        msp->stream = NULL;
+        if (msp->final_cb) {
             gchar *err = g_strdup_printf("Error: %s", error->message);
-            oa->final_cb(err, oa->user_data);
+            msp->final_cb(err, msp->user_data);
             g_free(err);
         }
         g_error_free(error);
@@ -312,17 +310,17 @@ static void read_stream_line(GDataInputStream *data_stream, GAsyncResult *result
     if (!line) {
         // End of stream
         g_object_unref(data_stream);
-        g_input_stream_close(oa->stream, NULL, NULL);
-        g_object_unref(oa->stream);
-        oa->stream = NULL;
+        g_input_stream_close(msp->stream, NULL, NULL);
+        g_object_unref(msp->stream);
+        msp->stream = NULL;
 
-        gchar *full = oa->stream_buffer ? g_strdup(oa->stream_buffer->str) : NULL;
-        if (oa->final_cb) {
-            oa->final_cb(full, oa->user_data);
+        gchar *full = msp->stream_buffer ? g_strdup(msp->stream_buffer->str) : NULL;
+        if (msp->final_cb) {
+            msp->final_cb(full, msp->user_data);
         }
-        if (oa->stream_buffer) {
-            g_string_free(oa->stream_buffer, TRUE);
-            oa->stream_buffer = NULL;
+        if (msp->stream_buffer) {
+            g_string_free(msp->stream_buffer, TRUE);
+            msp->stream_buffer = NULL;
         }
         g_free(full);
         return;
@@ -333,17 +331,17 @@ static void read_stream_line(GDataInputStream *data_stream, GAsyncResult *result
         if (g_strcmp0(data, "[DONE]") == 0) {
             g_free(line);
             g_object_unref(data_stream);
-            g_input_stream_close(oa->stream, NULL, NULL);
-            g_object_unref(oa->stream);
-            oa->stream = NULL;
+            g_input_stream_close(msp->stream, NULL, NULL);
+            g_object_unref(msp->stream);
+            msp->stream = NULL;
 
-            gchar *full = oa->stream_buffer ? g_strdup(oa->stream_buffer->str) : NULL;
-            if (oa->final_cb) {
-                oa->final_cb(full, oa->user_data);
+            gchar *full = msp->stream_buffer ? g_strdup(msp->stream_buffer->str) : NULL;
+            if (msp->final_cb) {
+                msp->final_cb(full, msp->user_data);
             }
-            if (oa->stream_buffer) {
-                g_string_free(oa->stream_buffer, TRUE);
-                oa->stream_buffer = NULL;
+            if (msp->stream_buffer) {
+                g_string_free(msp->stream_buffer, TRUE);
+                msp->stream_buffer = NULL;
             }
             g_free(full);
             return;
@@ -361,11 +359,11 @@ static void read_stream_line(GDataInputStream *data_stream, GAsyncResult *result
                     if (content && json_is_string(content)) {
                         const gchar *text = json_string_value(content);
                         if (text && *text) {
-                            if (!oa->stream_buffer)
-                                oa->stream_buffer = g_string_new("");
-                            g_string_append(oa->stream_buffer, text);
-                            if (oa->chunk_cb) {
-                                oa->chunk_cb(text, FALSE, oa->user_data);
+                            if (!msp->stream_buffer)
+                                msp->stream_buffer = g_string_new("");
+                            g_string_append(msp->stream_buffer, text);
+                            if (msp->chunk_cb) {
+                                msp->chunk_cb(text, FALSE, msp->user_data);
                             }
                         }
                     }
@@ -377,26 +375,26 @@ static void read_stream_line(GDataInputStream *data_stream, GAsyncResult *result
 
     g_free(line);
     g_data_input_stream_read_line_async(data_stream, G_PRIORITY_DEFAULT,
-                                        oa->base.cancellable,
-                                        (GAsyncReadyCallback)read_stream_line, oa);
+                                        msp->base.cancellable,
+                                        (GAsyncReadyCallback)read_stream_line, kp);
 }
 
-static void openai_send_message_stream(LumilaProvider *provider, const gchar *message,
-                                        LumilaChunkCallback chunk_cb,
-                                        LumilaResponseCallback final_cb,
-                                        gpointer user_data)
+static void moonshot_send_message_stream(LumilaProvider *provider, const gchar *message,
+                                      LumilaChunkCallback chunk_cb,
+                                      LumilaResponseCallback final_cb,
+                                      gpointer user_data)
 {
-    OpenAIProvider *oa = (OpenAIProvider *)provider;
+    MoonshotProvider *kp = (MoonshotProvider *)provider;
 
-    oa->chunk_cb = chunk_cb;
-    oa->final_cb = final_cb;
-    oa->user_data = user_data;
-    if (oa->stream_buffer) {
-        g_string_free(oa->stream_buffer, TRUE);
+    msp->chunk_cb = chunk_cb;
+    msp->final_cb = final_cb;
+    msp->user_data = user_data;
+    if (msp->stream_buffer) {
+        g_string_free(msp->stream_buffer, TRUE);
     }
-    oa->stream_buffer = g_string_new("");
+    msp->stream_buffer = g_string_new("");
 
-    const gchar *api_key = lumila_config_get_api_key(LUMILA_PROVIDER_OPENAI);
+    const gchar *api_key = lumila_config_get_api_key(LUMILA_PROVIDER_MOONSHOT);
     if (!api_key || !*api_key) {
         if (final_cb) {
             final_cb("Error: API key not configured", user_data);
@@ -410,10 +408,8 @@ static void openai_send_message_stream(LumilaProvider *provider, const gchar *me
     // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "gpt-4.1"; break;
-        case 1: model_name = "gpt-4.1-mini"; break;
-        case 2: model_name = "gpt-4.1-nano"; break;
-        default: model_name = "gpt-4.1"; break;
+        case 0: model_name = "kimi-k2-6"; break;
+        default: model_name = "kimi-k2-6"; break;
     }
 
     json_object_set_new(root, "model", json_string(model_name));
@@ -433,7 +429,7 @@ static void openai_send_message_stream(LumilaProvider *provider, const gchar *me
     gchar *json_body = json_dumps(root, 0);
     json_decref(root);
 
-    SoupMessage *msg = soup_message_new("POST", OPENAI_API_BASE);
+    SoupMessage *msg = soup_message_new("POST", MOONSHOT_API_BASE);
 
     soup_message_headers_append(soup_message_get_request_headers(msg), "Content-Type", "application/json");
 

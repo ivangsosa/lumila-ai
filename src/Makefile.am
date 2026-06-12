@@ -33,6 +33,8 @@ lumila_ai_la_SOURCES = \
 	providers/deepseek.h \
 	providers/mistral.c \
 	providers/mistral.h \
+	providers/moonshot.c \
+	providers/moonshot.h \
 	utils.c \
 	utils.h
 

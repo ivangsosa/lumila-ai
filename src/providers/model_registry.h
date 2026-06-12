@@ -3,7 +3,7 @@
 
 #include "provider.h"
 
-#define LUMILA_NUM_PROVIDERS 14
+#define LUMILA_NUM_PROVIDERS 22
 
 typedef struct {
     gint          provider_id;

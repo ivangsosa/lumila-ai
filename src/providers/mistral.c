@@ -175,11 +175,14 @@ static void mistral_send_message(LumilaProvider *provider, const gchar *message,
         return;
     }
 
+    // Build JSON request
     json_t *root = json_object();
 
+    // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "mistral-large-latest"; break;
+        case 0: model_name = "mistral-large-latest"; break;     // Mistral Large
+        case 1: model_name = "mistral-small-3.1-latest"; break; // Mistral Small 3.1
         default: model_name = "mistral-large-latest"; break;
     }
 

@@ -175,13 +175,15 @@ static void deepseek_send_message(LumilaProvider *provider, const gchar *message
         return;
     }
 
+    // Build JSON request
     json_t *root = json_object();
 
+    // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "deepseek-chat"; break;
-        case 1: model_name = "deepseek-reasoner"; break;
-        default: model_name = "deepseek-chat"; break;
+        case 0: model_name = "deepseek-v3"; break;      // DeepSeek V3
+        case 1: model_name = "deepseek-r1"; break;      // DeepSeek R1
+        default: model_name = "deepseek-v3"; break;
     }
 
     json_object_set_new(root, "model", json_string(model_name));

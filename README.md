@@ -27,22 +27,30 @@ AI Assistant plugin for Geany editor with multi-provider support, persistent his
 
 ## Modelos soportados (2025-2026)
 
-| # | Modelo                | Proveedor   | Tipo          |
-|---|-----------------------|-------------|---------------|
-| 0 | Claude Sonnet 4       | Anthropic   | Pago          |
-| 1 | Claude Opus 4         | Anthropic   | Pago          |
-| 2 | GPT-4.1               | OpenAI      | Pago          |
-| 3 | GPT-4.1 mini          | OpenAI      | Pago          |
-| 4 | Gemini 2.5 Flash      | Google      | Pago          |
-| 5 | Gemini 2.5 Pro        | Google      | Pago          |
-| 6 | Ollama Llama 3.3      | Ollama      | Local/Gratis  |
-| 7 | Ollama Qwen3          | Ollama      | Local/Gratis  |
-| 8 | OpenRouter Auto       | OpenRouter  | Gratis        |
-| 9 | DeepSeek Chat         | DeepSeek    | Pago          |
-| 10 | DeepSeek Reasoner    | DeepSeek    | Pago          |
-| 11 | Mistral Large        | Mistral     | Pago          |
-| 12 | Ollama Mistral Small | Ollama      | Local/Gratis  |
-| 13 | OpenRouter Free      | OpenRouter  | Gratis        |
+| # | Modelo                 | Proveedor   | Tipo          |
+|---|------------------------|-------------|---------------|
+| 0 | Claude Sonnet 4        | Anthropic   | Pago          |
+| 1 | Claude Opus 4          | Anthropic   | Pago          |
+| 2 | GPT-4.1                | OpenAI      | Pago          |
+| 3 | GPT-4.1 mini           | OpenAI      | Pago          |
+| 4 | Gemini 2.5 Flash       | Google      | Pago          |
+| 5 | Gemini 2.5 Pro         | Google      | Pago          |
+| 6 | Gemma 4 12B            | Google      | Pago          |
+| 7 | Ollama Llama 3.3       | Ollama      | Local/Gratis  |
+| 8 | Ollama Qwen3           | Ollama      | Local/Gratis  |
+| 9 | OpenRouter Auto        | OpenRouter  | Gratis        |
+| 10 | DeepSeek V3           | DeepSeek    | Pago          |
+| 11 | DeepSeek R1           | DeepSeek    | Pago          |
+| 12 | Mistral Large         | Mistral     | Pago          |
+| 13 | Ollama Mistral Small  | Ollama      | Local/Gratis  |
+| 14 | OpenRouter Free       | OpenRouter  | Gratis        |
+| 15 | Moonshot Kimi K2.6    | Moonshot    | Pago          |
+| 16 | MAI-Code-1            | OpenRouter  | Pago          |
+| 17 | GPT-4.1 nano          | OpenAI      | Pago          |
+| 18 | Mistral Small 3.1     | Mistral     | Pago          |
+| 19 | OpenRouter GLM-4      | OpenRouter  | Pago          |
+| 20 | OpenRouter Grok 3     | OpenRouter  | Pago          |
+| 21 | OpenRouter Qwen3-235B | OpenRouter  | Pago          |
 
 ## Dependencies
 
@@ -117,14 +125,14 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
 - **max_tokens**: máximo de tokens (100 - 8000, default 2048)
 - **top_p**: muestreo nucleus (0.0 - 1.0, default 0.9)
 - **repeat_penalty**: penalización de repetición (default 1.1)
-- **default_provider_id**: modelo por defecto (0-13, default 9 = DeepSeek Chat)
+- **default_provider_id**: modelo por defecto (0-21, default 9 = DeepSeek V3)
 
 ### Configuraciones sugeridas por modelo
 
 | Escenario | `temperature` | `max_tokens` | `top_p` | `repeat_penalty` | `default_provider_id` |
 |---|---|---|---|---|---|
-| **DeepSeek Chat** (rápido, barato, bueno para código) | 0.3 | 2048 | 0.9 | 1.1 | 9 |
-| **DeepSeek Reasoner** (raciocinio profundo) | 0.2 | 4096 | 0.95 | 1.1 | 10 |
+| **DeepSeek V3** (rápido, barato, bueno para código) | 0.3 | 2048 | 0.9 | 1.1 | 10 |
+| **DeepSeek R1** (raciocinio profundo) | 0.2 | 4096 | 0.95 | 1.1 | 11 |
 | **Ollama Qwen3:8b** (local, ligero) | 0.5 | 2048 | 0.9 | 1.05 | 7 |
 | **OpenRouter Auto** (gratis, enrutamiento automático) | 0.3 | 2048 | 0.9 | 1.1 | 8 |
 | **Genérica** (Claude, GPT-4.1, Gemini) | 0.3 | 2048 | 0.9 | 1.1 | según modelo |
