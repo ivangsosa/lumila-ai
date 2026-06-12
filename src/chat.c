@@ -676,4 +676,8 @@ void lumila_chat_load_conversation(const gchar *filename)
     // Update conversation ID from filename
     g_free(conversation_id);
     conversation_id = g_strndup(filename, strlen(filename) - 5); // remove .json
+
+    // Restore title from history
+    g_free(conversation_title);
+    conversation_title = lumila_history_load_title(filename);
 }

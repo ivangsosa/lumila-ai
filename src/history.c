@@ -129,6 +129,30 @@ void lumila_history_free_messages(GArray *msgs)
     }
 }
 
+gchar *lumila_history_load_title(const gchar *filename)
+{
+    gchar *dir = get_history_dir();
+    gchar *path = g_build_filename(dir, filename, NULL);
+    g_free(dir);
+
+    json_error_t err;
+    json_t *root = json_load_file(path, 0, &err);
+    g_free(path);
+
+    if (!root) return NULL;
+
+    json_t *title = json_object_get(root, "title");
+    gchar *result = NULL;
+    if (title && json_is_string(title)) {
+        const gchar *val = json_string_value(title);
+        if (val && *val) {
+            result = g_strdup(val);
+        }
+    }
+    json_decref(root);
+    return result;
+}
+
 gboolean lumila_history_delete(const gchar *filename)
 {
     gchar *dir = get_history_dir();

@@ -11,15 +11,43 @@ static void on_continue_clicked(GtkButton *button, gpointer user_data)
     (void)button;
     const gchar *filename = (const gchar *)user_data;
     lumila_chat_load_conversation(filename);
+    if (stack_ref) {
+        gtk_stack_set_visible_child_name(GTK_STACK(stack_ref), "chat");
+    }
+}
+
+static void on_delete_dialog_response(GtkDialog *dialog, gint response_id, gpointer user_data)
+{
+    const gchar *filename = (const gchar *)user_data;
+    if (response_id == GTK_RESPONSE_YES) {
+        if (lumila_history_delete(filename)) {
+            lumila_history_ui_refresh();
+        }
+    }
+    gtk_widget_destroy(GTK_WIDGET(dialog));
 }
 
 static void on_delete_clicked(GtkButton *button, gpointer user_data)
 {
-    (void)button;
     const gchar *filename = (const gchar *)user_data;
-    if (lumila_history_delete(filename)) {
-        lumila_history_ui_refresh();
-    }
+    GtkWidget *parent = gtk_widget_get_toplevel(GTK_WIDGET(button));
+
+    GtkWidget *dialog = gtk_message_dialog_new(
+        GTK_WINDOW(parent),
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        GTK_MESSAGE_QUESTION,
+        GTK_BUTTONS_YES_NO,
+        "Delete conversation '%s'?",
+        filename);
+
+    gtk_message_dialog_format_secondary_text(
+        GTK_MESSAGE_DIALOG(dialog),
+        "This action cannot be undone.");
+
+    gtk_window_set_title(GTK_WINDOW(dialog), "Confirm Deletion");
+
+    g_signal_connect(dialog, "response", G_CALLBACK(on_delete_dialog_response), (gpointer)filename);
+    gtk_widget_show_all(dialog);
 }
 
 static GtkWidget *create_history_row(LumilaHistoryEntry *entry)
@@ -33,9 +61,9 @@ static GtkWidget *create_history_row(LumilaHistoryEntry *entry)
 
     gchar *title_text;
     if (entry->title && *entry->title)
-        title_text = g_strdup_printf("<b>%s</b>", entry->title);
+        title_text = g_strdup_printf("<b><span size='small'>%s</span></b>", entry->title);
     else
-        title_text = g_strdup_printf("<b>%s</b>", entry->filename);
+        title_text = g_strdup_printf("<b><span size='small'>%s</span></b>", entry->filename);
 
     GtkWidget *title_label = gtk_label_new(NULL);
     gtk_label_set_markup(GTK_LABEL(title_label), title_text);

@@ -231,13 +231,8 @@ Dejá vacío (`""`) para usar el modelo por defecto del provider.
 
 ## Roadmap / Características futuras
 
-- **Historial — Auto-back to chat**: al presionar **Continue**, volver automáticamente a la pestaña de chat sin tener que clickear *Back to Chat*
-- **Historial — Persistencia de títulos**: actualmente el título se pierde al reiniciar Geany (muestra `conversation-20260612-030343.json` por ejemplo); guardar el título extraído en el JSON del historial para mostrarlo siempre
-- **Historial — Eliminar conversaciones**: mejorar la UI de eliminación (actualmente hay un botón *Delete* básico; agregar confirmación)
-- **Chat — Bloques de código separados**: renderizar bloques de código generados por la IA en contenedores visuales distintos del texto, con fondo oscuro y bordes redondeados para mejor lectura
-- **Chat — Syntax highlighting mejorado**: ampliar el resaltado de sintaxis a más lenguajes (Rust, Go, TypeScript, etc.) y soportar resaltado de bloques anidados
 - **Modo Ask**: modo de consulta rápida donde la IA responde sin editar archivos (desactiva `file:` blocks)
-- **Modo Plan**: la IA genera un plan paso a paso antes de ejecutar cambios, permitiendo al usuario aprobar o rechazar cada paso
+- **Modo Plan**: la IA genera un plan paso a paso antes de ejecutar cambios, permitiendo al usuario aprobar, mejorar o rechazar cada paso
 
 ## Troubleshooting
 
