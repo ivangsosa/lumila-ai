@@ -8,7 +8,8 @@ AI Assistant plugin for Geany editor with multi-provider support, persistent his
   - Fondo moderno (`#0f0f23`) con mensajes estilo burbujas
   - Mensajes del usuario alineados a la derecha (azul `#82AAFF`)
   - Respuestas de la IA alineadas a la izquierda (blanco azulado `#C8D3F5`)
-  - Syntax highlighting en bloques de código
+  - **Bloques de código separados** con fondo oscuro (`#16162a`), márgenes y separación visual
+  - **Syntax highlighting inteligente** con detección automática de lenguaje (20+ lenguajes soportados)
 - **Edición de archivos por IA**: la IA puede modificar archivos abiertos directamente
   - Usa el formato ` ```file:nombre.ext ` para editar
   - Crea archivos nuevos si no existen
@@ -21,10 +22,15 @@ AI Assistant plugin for Geany editor with multi-provider support, persistent his
 - **Historial de conversaciones persistente**
   - Guardado automático en `~/.config/geany/plugins/lumila-ai/history/`
   - Botón **History** para listar, continuar o eliminar conversaciones
-  - Título extraído automáticamente del primer mensaje
+  - **Auto-back to chat**: al presionar **Continue**, vuelve automáticamente al chat sin clickear "Back to Chat"
+  - **Persistencia de títulos**: los títulos se guardan en el JSON del historial y se restauran al cargar
+  - **Fuente pequeña** en la lista de historial para leer títulos completos sin estirar el panel
+  - **Confirmación de eliminación**: diálogo modal con "Yes/No" antes de borrar una conversación
   - Contexto multi-mensaje enviado a los modelos
 - **Atajos de teclado**
-  - **Ctrl+Enter**: enviar mensaje
+  - **Enter**: enviar mensaje
+  - **Shift+Enter**: nueva línea en el input
+  - **Ctrl+Enter**: también envía mensaje (compatibilidad)
   - **Escape**: cancelar request activo
   - Focus automático al input después de enviar/cancelar
 - **Configuraciones avanzadas**: temperatura, max_tokens, top_p, repeat_penalty
@@ -175,13 +181,14 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
 4. Activa **Lumila AI** en *Herramientas → Administrador de complementos*
 5. El panel lateral **Lumila** aparecerá en la barra lateral
 6. Selecciona un modelo y escribe tu mensaje
-7. Presiona **Send** o **Ctrl+Enter** para enviar
+7. Presiona **Send** o **Enter** para enviar. **Shift+Enter** para nueva línea
 
 ### Historial
 
 - Clic en **History** para ver conversaciones guardadas
-- **Continue**: carga una conversación anterior en el chat activo
-- **Delete**: elimina una conversación del historial
+- **Continue**: carga una conversación anterior en el chat activo y vuelve automáticamente al chat
+- **Delete**: elimina una conversación del historial (con confirmación previa)
+- Los títulos se guardan en el JSON y se restauran al recargar, sin perderse al reiniciar Geany
 - Las conversaciones se guardan automáticamente al crear una nueva o cerrar Geany
 
 ### Slash Commands
@@ -198,6 +205,36 @@ Ejemplo: `/explain esta función`
 ### Send Selection
 
 Seleccioná texto en el editor y presioná **Send Selection**. El plugin enviará solo esa porción como contexto, sin necesidad de copiar y pegar.
+
+### Syntax Highlighting
+
+El plugin detecta automáticamente el lenguaje en los bloques de código (` ```lang `) y aplica resaltado de sintaxis con fondo oscuro, márgenes y colores específicos:
+
+| Lenguaje | Detecta (` ``` `) | Características |
+|---|---|---|
+| **Python** | `python`, `py` | Keywords, `#` comentarios, strings triples |
+| **JavaScript/TypeScript** | `javascript`, `js`, `typescript`, `ts` | Keywords, `//`, `/* */`, template literals `` ` `` |
+| **C/C++** | `c`, `cpp`, `c++`, `cxx` | Keywords, `//`, `/* */`, números hex/bin |
+| **Rust** | `rust`, `rs` | Keywords, `//`, `/* */`, macros `!` |
+| **Go** | `go`, `golang` | Keywords, raw strings `` ` `` |
+| **PHP** | `php` | Keywords, `//`, `#`, `/* */`, `$variables` |
+| **HTML/XML** | `html`, `htm`, `xml` | Tags `< >`, `<!-- -->` comentarios |
+| **CSS** | `css` | Propiedades, `//`, `/* */`, colores |
+| **Bash/Shell** | `bash`, `sh`, `zsh`, `shell` | Keywords, `#` comentarios, `$VAR`, backticks |
+| **SQL** | `sql` | 100+ keywords, `--` comentarios, `/* */` |
+| **Java** | `java` | Keywords, `//`, `/* */` |
+| **Ruby** | `ruby`, `rb` | Keywords, `#`, `=begin` comentarios |
+| **JSON** | `json` | Literales `true`, `false`, `null` |
+| **Markdown** | `markdown`, `md` | Sin resaltado específico |
+| **YAML/TOML/Dockerfile/Makefile** | `yaml`, `yml`, `toml`, `dockerfile`, `makefile` | Keywords genéricos, `#` comentarios |
+
+**Características del lexer:**
+- Comentarios de línea (`//`, `#`, `--`) y multilínea (`/* */`, `<!-- -->`, `=begin/end`)
+- Strings: `""`, `''`, template literals `` ` ``, raw strings
+- Números: enteros, flotantes, hex (`0xFF`), octal (`0o755`), binario (`0b1010`), notación científica (`1.5e-10`)
+- Variables shell: `$VAR`, `${VAR}`
+- HTML tags completos: `<div class="...">`
+- CSS properties detectadas: `propiedad: valor;`
 
 ### Exportar conversación
 
@@ -231,8 +268,20 @@ Dejá vacío (`""`) para usar el modelo por defecto del provider.
 
 ## Roadmap / Características futuras
 
-- **Modo Ask**: modo de consulta rápida donde la IA responde sin editar archivos (desactiva `file:` blocks)
-- **Modo Plan**: la IA genera un plan paso a paso antes de ejecutar cambios, permitiendo al usuario aprobar, mejorar o rechazar cada paso
+Implementadas recientemente:
+
+- [x] **Historial — Auto-back to chat**: al presionar **Continue**, vuelve automáticamente al chat
+- [x] **Historial — Persistencia de títulos**: títulos guardados en JSON, se restauran al cargar
+- [x] **Historial — Fuente pequeña**: títulos legibles sin estirar el panel
+- [x] **Historial — Confirmación de eliminación**: diálogo modal Yes/No antes de borrar
+- [x] **Chat — Bloques de código separados**: fondo oscuro (`#16162a`), márgenes y separación visual
+- [x] **Chat — Syntax highlighting mejorado**: 20+ lenguajes con lexer completo (comentarios multilínea, strings, números hex/oct/bin, HTML tags, CSS properties, shell vars)
+- [x] **Chat — Enviar con Enter**: `Enter` envía, `Shift+Enter` nueva línea
+
+Pendientes:
+
+- [ ] **Modo Ask**: modo de consulta rápida donde la IA responde sin editar archivos (desactiva `file:` blocks)
+- [ ] **Modo Plan**: la IA genera un plan paso a paso antes de ejecutar cambios, permitiendo al usuario aprobar, mejorar o rechazar cada paso
 
 ## Troubleshooting
 
