@@ -1,4 +1,4 @@
-# Lumila AI - Plugin para Geany v0.8.0
+# Lumila AI - Plugin para Geany v0.9.0
 
 AI Assistant plugin for Geany editor with multi-provider support, persistent history, and real-time streaming.
 
@@ -111,7 +111,7 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
 
 ```json
 {
-  "version": "0.8.0",
+  "version": "0.9.0",
   "api_keys": {
     "openai": "",
     "anthropic": "",
