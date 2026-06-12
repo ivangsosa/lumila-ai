@@ -1,4 +1,6 @@
 #include "openrouter.h"
+#include "provider_base.h"
+#include "../../config.h"
 #include "../config.h"
 #include <jansson.h>
 #include <string.h>
