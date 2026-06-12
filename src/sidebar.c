@@ -81,8 +81,10 @@ static gboolean on_input_key_press(GtkWidget *widget, GdkEventKey *event, gpoint
     (void)widget;
     (void)user_data;
 
-    if ((event->state & GDK_CONTROL_MASK) &&
-        (event->keyval == GDK_KEY_Return || event->keyval == GDK_KEY_KP_Enter)) {
+    if (event->keyval == GDK_KEY_Return || event->keyval == GDK_KEY_KP_Enter) {
+        if (event->state & GDK_SHIFT_MASK) {
+            return FALSE;
+        }
         on_send_clicked(NULL, NULL);
         return TRUE;
     }
