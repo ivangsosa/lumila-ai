@@ -754,24 +754,8 @@ void lumila_chat_ui_append_user_message(GtkTextView *view, const gchar *message)
     gtk_text_view_scroll_to_mark(view, mark, 0.0, FALSE, 0.0, 0.0);
 }
 
-void lumila_chat_ui_append_ai_message(GtkTextView *view, const gchar *message)
+static void insert_ai_message_body(GtkTextBuffer *buffer, GtkTextIter *iter, const gchar *message)
 {
-    if (!view || !message) return;
-
-    GtkTextBuffer *buffer = gtk_text_view_get_buffer(view);
-    GtkTextIter end;
-    gtk_text_buffer_get_end_iter(buffer, &end);
-
-    // Add spacing between messages
-    if (gtk_text_buffer_get_char_count(buffer) > 0) {
-        gtk_text_buffer_insert(buffer, &end, "\n", -1);
-    }
-
-    // Insert sender name
-    gtk_text_buffer_insert_with_tags(buffer, &end, "Lumila", -1, ai_name_tag, NULL);
-    gtk_text_buffer_insert(buffer, &end, "\n", -1);
-
-    // Check for code blocks and format them
     gchar **lines = g_strsplit(message, "\n", -1);
     gboolean in_code_block = FALSE;
     const LanguageProfile *current_profile = NULL;
@@ -780,7 +764,6 @@ void lumila_chat_ui_append_ai_message(GtkTextView *view, const gchar *message)
     for (gint i = 0; lines[i] != NULL; i++) {
         gchar *line = lines[i];
 
-        // Check for code block markers
         if (g_str_has_prefix(line, "```")) {
             if (!in_code_block) {
                 gchar *lang = extract_language_from_fence(line);
@@ -792,33 +775,43 @@ void lumila_chat_ui_append_ai_message(GtkTextView *view, const gchar *message)
                 in_code_block = FALSE;
                 current_profile = NULL;
                 in_multi_comment = FALSE;
-                gtk_text_buffer_insert(buffer, &end, "\n", -1);
+                gtk_text_buffer_insert(buffer, iter, "\n", -1);
             }
             continue;
         }
 
         if (in_code_block) {
-            insert_code_with_highlighting(buffer, &end, line, current_profile, &in_multi_comment);
-            gtk_text_buffer_insert(buffer, &end, "\n", -1);
+            insert_code_with_highlighting(buffer, iter, line, current_profile, &in_multi_comment);
+            gtk_text_buffer_insert(buffer, iter, "\n", -1);
         } else {
-            // Insert regular message with AI styling
-            gtk_text_buffer_insert_with_tags(buffer, &end, line, -1, ai_tag, NULL);
+            gtk_text_buffer_insert_with_tags(buffer, iter, line, -1, ai_tag, NULL);
             if (lines[i+1] != NULL) {
-                gtk_text_buffer_insert(buffer, &end, "\n", -1);
+                gtk_text_buffer_insert(buffer, iter, "\n", -1);
             }
         }
     }
 
     g_strfreev(lines);
+    gtk_text_buffer_insert(buffer, iter, "\n", -1);
+}
+
+void lumila_chat_ui_append_ai_message(GtkTextView *view, const gchar *message)
+{
+    if (!view || !message) return;
+
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer(view);
+    GtkTextIter end;
+    gtk_text_buffer_get_end_iter(buffer, &end);
+
+    if (gtk_text_buffer_get_char_count(buffer) > 0) {
+        gtk_text_buffer_insert(buffer, &end, "\n", -1);
+    }
+
+    gtk_text_buffer_insert_with_tags(buffer, &end, "Lumila", -1, ai_name_tag, NULL);
     gtk_text_buffer_insert(buffer, &end, "\n", -1);
 
-    // Insert timestamp
-    // gchar *time_str = get_current_time_string();
-    // gtk_text_buffer_insert_with_tags(buffer, &end, time_str, -1, timestamp_tag, NULL);
-    // g_free(time_str);
-    // gtk_text_buffer_insert(buffer, &end, "\n", -1);
+    insert_ai_message_body(buffer, &end, message);
 
-    // Scroll to end
     GtkTextMark *mark = gtk_text_buffer_get_insert(buffer);
     gtk_text_view_scroll_to_mark(view, mark, 0.0, FALSE, 0.0, 0.0);
 }
@@ -880,4 +873,29 @@ void lumila_chat_ui_stream_end(GtkTextView *view)
         stream_mark = NULL;
     }
     gtk_text_buffer_insert(buffer, &end, "\n", -1);
+}
+
+void lumila_chat_ui_stream_end_and_render(GtkTextView *view, const gchar *full_message)
+{
+    if (!view || !full_message) return;
+
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer(view);
+    GtkTextIter end;
+    gtk_text_buffer_get_end_iter(buffer, &end);
+
+    if (stream_mark) {
+        GtkTextIter start;
+        gtk_text_buffer_get_iter_at_mark(buffer, &start, stream_mark);
+        gtk_text_buffer_delete(buffer, &start, &end);
+        gtk_text_buffer_delete_mark(buffer, stream_mark);
+        stream_mark = NULL;
+        insert_ai_message_body(buffer, &start, full_message);
+    } else {
+        insert_ai_message_body(buffer, &end, full_message);
+    }
+
+    gtk_text_buffer_insert(buffer, &end, "\n", -1);
+
+    GtkTextMark *mark = gtk_text_buffer_get_insert(buffer);
+    gtk_text_view_scroll_to_mark(view, mark, 0.0, FALSE, 0.0, 0.0);
 }

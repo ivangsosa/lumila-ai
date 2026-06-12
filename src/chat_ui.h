@@ -12,5 +12,6 @@ void lumila_chat_ui_clear(GtkTextView *view);
 void lumila_chat_ui_stream_start(GtkTextView *view);
 void lumila_chat_ui_stream_append(GtkTextView *view, const gchar *chunk);
 void lumila_chat_ui_stream_end(GtkTextView *view);
+void lumila_chat_ui_stream_end_and_render(GtkTextView *view, const gchar *full_message);
 
 #endif

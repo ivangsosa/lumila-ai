@@ -51,9 +51,9 @@ static gboolean stream_idle_callback(gpointer user_data)
     StreamIdleData *data = (StreamIdleData *)user_data;
 
     if (data->is_final) {
-        lumila_chat_ui_stream_end(chat_view);
         if (data->full_response) {
             gchar *cleaned = apply_file_edits(data->full_response);
+            lumila_chat_ui_stream_end_and_render(chat_view, data->full_response);
             LumilaMessage msg = {
                 .role = g_strdup("assistant"),
                 .content = g_strdup(data->full_response),
@@ -61,8 +61,6 @@ static gboolean stream_idle_callback(gpointer user_data)
             };
             g_array_append_val(messages, msg);
             if (cleaned) {
-                // Replace the streamed text with cleaned version
-                // For simplicity, just append the summary if any
                 if (strlen(cleaned) > strlen(data->full_response)) {
                     GtkTextBuffer *buffer = gtk_text_view_get_buffer(chat_view);
                     GtkTextIter end;
@@ -73,6 +71,7 @@ static gboolean stream_idle_callback(gpointer user_data)
                 g_free(cleaned);
             }
         } else {
+            lumila_chat_ui_stream_end(chat_view);
             append_message_to_view("assistant", "Error: Failed to get response");
         }
         lumila_sidebar_set_status(NULL);
