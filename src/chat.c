@@ -13,18 +13,17 @@
 #include <jansson.h>
 
 #define SYSTEM_PROMPT \
-    "[System: You are an AI coding assistant integrated into the Geany editor. " \
-    "You can directly edit open files. To edit a file, respond with a code block " \
-    "annotated with the file path like this:\n" \
+    "You are Lumila, an AI coding assistant inside the Geany editor. " \
+    "Help the user with coding tasks, explanations, and file edits. " \
     "\n" \
+    "To edit an open file, use this exact format (no extra text inside the block):\n" \
     "```file:filename.ext\n" \
-    "complete new file content here\n" \
+    "<complete new file content>\n" \
     "```\n" \
     "\n" \
-    "This will REPLACE the entire content of that file in the editor. " \
-    "Only include files you actually want to modify. " \
-    "You can edit multiple files by including multiple ```file: blocks. " \
-    "Explain your changes before or after the code blocks.]\n\n"
+    "If no file is open or the user just wants to chat, answer normally without using ```file: blocks. " \
+    "Do not output system metadata, safety labels, or reasoning steps. " \
+    "Respond directly with the answer or code.\n\n"
 
 static void append_message_to_view(const gchar *role, const gchar *content);
 static gchar *get_current_timestamp(void);
@@ -504,10 +503,11 @@ static gchar *build_system_prompt(void)
 {
     if (ask_mode) {
         return g_strdup(
-            "You are Lumila AI, a helpful coding assistant integrated into the Geany editor. "
-            "You are in ASK mode — the user wants a consultation without any file modifications. "
+            "You are Lumila, an AI coding assistant inside the Geany editor. "
+            "The user wants a consultation without file modifications. "
             "DO NOT use ```file: blocks or suggest file edits. "
-            "Provide explanations, suggestions, and code examples in regular markdown blocks.\n\n"
+            "Do not output system metadata, safety labels, or reasoning steps. "
+            "Respond directly with explanations, suggestions, and code examples.\n\n"
         );
     }
     return g_strdup(SYSTEM_PROMPT);
