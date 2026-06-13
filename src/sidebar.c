@@ -10,8 +10,9 @@ static GtkWidget *chat_view = NULL;
 static GtkWidget *input_view = NULL;
 static GtkWidget *provider_combo = NULL;
 static GtkWidget *status_label = NULL;
-static GtkWidget *send_button = NULL;
-static GtkWidget *cancel_button = NULL;
+static GtkWidget *action_button = NULL;
+static GtkWidget *mode_combo = NULL;
+static gboolean is_streaming = FALSE;
 
 static void on_send_clicked(GtkButton *button, gpointer user_data)
 {
@@ -97,6 +98,50 @@ static void on_check_updates_clicked(GtkButton *button, gpointer user_data)
     }
 }
 
+static void on_action_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+    (void)user_data;
+
+    if (is_streaming) {
+        lumila_sidebar_cancel_request();
+    } else {
+        on_send_clicked(NULL, NULL);
+    }
+}
+
+static void on_mode_code(GtkMenuItem *item, gpointer user_data)
+{
+    (void)item;
+    (void)user_data;
+    lumila_chat_set_ask_mode(FALSE);
+    if (mode_combo) gtk_button_set_label(GTK_BUTTON(mode_combo), "Code");
+}
+
+static void on_mode_ask(GtkMenuItem *item, gpointer user_data)
+{
+    (void)item;
+    (void)user_data;
+    lumila_chat_set_ask_mode(TRUE);
+    if (mode_combo) gtk_button_set_label(GTK_BUTTON(mode_combo), "Ask");
+}
+
+static void on_mode_plan(GtkMenuItem *item, gpointer user_data)
+{
+    (void)item;
+    (void)user_data;
+    /* Plan mode: ask mode off for now, will be expanded later */
+    lumila_chat_set_ask_mode(FALSE);
+    if (mode_combo) gtk_button_set_label(GTK_BUTTON(mode_combo), "Plan");
+}
+
+static void on_more_clicked(GtkButton *button, gpointer user_data)
+{
+    GtkWidget *menu = GTK_WIDGET(user_data);
+    gtk_menu_popup_at_widget(GTK_MENU(menu), GTK_WIDGET(button),
+                             GDK_GRAVITY_SOUTH, GDK_GRAVITY_NORTH, NULL);
+}
+
 static void on_provider_changed(GtkComboBox *combo, gpointer user_data)
 {
     (void)user_data;
@@ -158,12 +203,14 @@ void lumila_sidebar_init(void)
     GtkCssProvider *css_provider = gtk_css_provider_new();
     const gchar *css_data =
         "* { background-color: #0f0f23; color: #C8D3F5; }"
-        "button { background-color: #1a1a3e; border: 1px solid #2a2a5e; border-radius: 4px; padding: 6px; }"
+        "button { background-color: #1a1a3e; border: 1px solid #2a2a5e; border-radius: 4px; padding: 4px 8px; }"
         "button:hover { background-color: #25255a; }"
         "textview { background-color: #0f0f23; color: #C8D3F5; }"
-        ".input-frame { border-top: 1px solid #2a2a5e; margin-top: 6px; }"
+        ".input-frame { border-top: 1px solid #2a2a5e; margin-top: 6px; padding: 4px; }"
         ".input-frame textview { background-color: #141432; }"
-        "comboboxtext { background-color: #1a1a3e; color: #C8D3F5; border: 1px solid #2a2a5e; }";
+        "comboboxtext { background-color: #1a1a3e; color: #C8D3F5; border: 1px solid #2a2a5e; padding: 2px; }"
+        ".toolbar-small button { padding: 2px 6px; font-size: 10px; min-width: 24px; min-height: 24px; }"
+        ".toolbar-small comboboxtext { padding: 1px; font-size: 10px; }";
     gtk_css_provider_load_from_data(css_provider, css_data, -1, NULL);
     GtkStyleContext *ctx = gtk_widget_get_style_context(sidebar_widget);
     gtk_style_context_add_provider(ctx, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -174,12 +221,107 @@ void lumila_sidebar_init(void)
     gtk_stack_set_transition_type(GTK_STACK(stack), GTK_STACK_TRANSITION_TYPE_SLIDE_LEFT_RIGHT);
 
     // ---- CHAT PAGE ----
-    GtkWidget *chat_page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    GtkWidget *chat_page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
 
-    // Provider selector
-    GtkWidget *provider_label = gtk_label_new(_("Provider:"));
-    gtk_box_pack_start(GTK_BOX(chat_page), provider_label, FALSE, FALSE, 0);
+    // === TOP TOOLBAR (right-aligned, small icons) ===
+    GtkWidget *top_toolbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    gtk_style_context_add_class(gtk_widget_get_style_context(top_toolbar), "toolbar-small");
+    gtk_widget_set_halign(top_toolbar, GTK_ALIGN_FILL);
 
+    // Left spacer pushes buttons to the right
+    GtkWidget *top_spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_hexpand(top_spacer, TRUE);
+    gtk_box_pack_start(GTK_BOX(top_toolbar), top_spacer, TRUE, TRUE, 0);
+
+    GtkWidget *new_chat_btn = gtk_button_new_with_label("+");
+    gtk_widget_set_tooltip_text(new_chat_btn, "New Chat");
+    g_signal_connect(new_chat_btn, "clicked", G_CALLBACK(on_new_chat_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(top_toolbar), new_chat_btn, FALSE, FALSE, 0);
+
+    GtkWidget *history_btn = gtk_button_new_with_label("\xE2\x8F\xB1");
+    gtk_widget_set_tooltip_text(history_btn, "History");
+    g_signal_connect(history_btn, "clicked", G_CALLBACK(on_history_clicked), stack);
+    gtk_box_pack_start(GTK_BOX(top_toolbar), history_btn, FALSE, FALSE, 0);
+
+    // More options menu (three dots)
+    GtkWidget *more_menu = gtk_menu_new();
+    GtkWidget *item_send_sel = gtk_menu_item_new_with_label("Send Selection");
+    g_signal_connect(item_send_sel, "activate", G_CALLBACK(on_send_selection_clicked), NULL);
+    gtk_menu_shell_append(GTK_MENU_SHELL(more_menu), item_send_sel);
+
+    GtkWidget *item_send_file = gtk_menu_item_new_with_label("Send File");
+    g_signal_connect(item_send_file, "activate", G_CALLBACK(on_send_file_clicked), NULL);
+    gtk_menu_shell_append(GTK_MENU_SHELL(more_menu), item_send_file);
+
+    GtkWidget *sep1 = gtk_separator_menu_item_new();
+    gtk_menu_shell_append(GTK_MENU_SHELL(more_menu), sep1);
+
+    GtkWidget *item_export = gtk_menu_item_new_with_label("Export MD");
+    g_signal_connect(item_export, "activate", G_CALLBACK(on_export_clicked), NULL);
+    gtk_menu_shell_append(GTK_MENU_SHELL(more_menu), item_export);
+
+    GtkWidget *item_updates = gtk_menu_item_new_with_label("Check Updates");
+    g_signal_connect(item_updates, "activate", G_CALLBACK(on_check_updates_clicked), NULL);
+    gtk_menu_shell_append(GTK_MENU_SHELL(more_menu), item_updates);
+
+    gtk_widget_show_all(more_menu);
+
+    GtkWidget *more_btn = gtk_button_new_with_label("...");
+    gtk_widget_set_tooltip_text(more_btn, "More options");
+    g_signal_connect(more_btn, "clicked", G_CALLBACK(on_more_clicked), more_menu);
+    gtk_box_pack_start(GTK_BOX(top_toolbar), more_btn, FALSE, FALSE, 0);
+
+    gtk_box_pack_start(GTK_BOX(chat_page), top_toolbar, FALSE, FALSE, 0);
+
+    // Chat view
+    GtkWidget *scrolled = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled),
+                                   GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+
+    chat_view = gtk_text_view_new();
+    gtk_text_view_set_editable(GTK_TEXT_VIEW(chat_view), FALSE);
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(chat_view), GTK_WRAP_WORD);
+    gtk_container_add(GTK_CONTAINER(scrolled), chat_view);
+    gtk_box_pack_start(GTK_BOX(chat_page), scrolled, TRUE, TRUE, 0);
+
+    lumila_chat_set_view(GTK_TEXT_VIEW(chat_view));
+
+    // Status label
+    status_label = gtk_label_new("");
+    gtk_widget_set_no_show_all(status_label, TRUE);
+    gtk_box_pack_start(GTK_BOX(chat_page), status_label, FALSE, FALSE, 0);
+
+    // === INPUT FRAME ===
+    GtkWidget *input_frame = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    gtk_style_context_add_class(gtk_widget_get_style_context(input_frame), "input-frame");
+
+    // Bottom toolbar: Mode + Model + Send/Cancel
+    GtkWidget *bottom_toolbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    gtk_style_context_add_class(gtk_widget_get_style_context(bottom_toolbar), "toolbar-small");
+
+    // Mode selector (GtkMenuButton opens upward)
+    GtkWidget *mode_menu = gtk_menu_new();
+    GtkWidget *item_code = gtk_menu_item_new_with_label("Code");
+    g_signal_connect(item_code, "activate", G_CALLBACK(on_mode_code), NULL);
+    gtk_menu_shell_append(GTK_MENU_SHELL(mode_menu), item_code);
+
+    GtkWidget *item_ask = gtk_menu_item_new_with_label("Ask");
+    g_signal_connect(item_ask, "activate", G_CALLBACK(on_mode_ask), NULL);
+    gtk_menu_shell_append(GTK_MENU_SHELL(mode_menu), item_ask);
+
+    GtkWidget *item_plan = gtk_menu_item_new_with_label("Plan");
+    g_signal_connect(item_plan, "activate", G_CALLBACK(on_mode_plan), NULL);
+    gtk_menu_shell_append(GTK_MENU_SHELL(mode_menu), item_plan);
+
+    gtk_widget_show_all(mode_menu);
+
+    mode_combo = gtk_menu_button_new();
+    gtk_menu_button_set_popup(GTK_MENU_BUTTON(mode_combo), mode_menu);
+    gtk_button_set_label(GTK_BUTTON(mode_combo), "Code");
+    gtk_menu_button_set_direction(GTK_MENU_BUTTON(mode_combo), GTK_ARROW_UP);
+    gtk_box_pack_start(GTK_BOX(bottom_toolbar), mode_combo, FALSE, FALSE, 0);
+
+    // Model selector
     provider_combo = gtk_combo_box_text_new();
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Claude Sonnet 4");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Claude Opus 4");
@@ -207,89 +349,34 @@ void lumila_sidebar_init(void)
     gint default_provider = lumila_config_get_default_provider();
     gtk_combo_box_set_active(GTK_COMBO_BOX(provider_combo), default_provider);
     g_signal_connect(provider_combo, "changed", G_CALLBACK(on_provider_changed), NULL);
-    gtk_box_pack_start(GTK_BOX(chat_page), provider_combo, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(bottom_toolbar), provider_combo, FALSE, FALSE, 0);
 
-    // Chat view
-    GtkWidget *scrolled = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled),
-                                   GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+    // Spacer
+    GtkWidget *bottom_spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_hexpand(bottom_spacer, TRUE);
+    gtk_box_pack_start(GTK_BOX(bottom_toolbar), bottom_spacer, TRUE, TRUE, 0);
 
-    chat_view = gtk_text_view_new();
-    gtk_text_view_set_editable(GTK_TEXT_VIEW(chat_view), FALSE);
-    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(chat_view), GTK_WRAP_WORD);
-    gtk_container_add(GTK_CONTAINER(scrolled), chat_view);
-    gtk_box_pack_start(GTK_BOX(chat_page), scrolled, TRUE, TRUE, 0);
+    // Send/Cancel unified button
+    action_button = gtk_button_new_with_label("Send");
+    g_signal_connect(action_button, "clicked", G_CALLBACK(on_action_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(bottom_toolbar), action_button, FALSE, FALSE, 0);
 
-    lumila_chat_set_view(GTK_TEXT_VIEW(chat_view));
+    gtk_box_pack_start(GTK_BOX(input_frame), bottom_toolbar, FALSE, FALSE, 0);
 
-    // Input area
+    // Input text area
     GtkWidget *input_scrolled = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(input_scrolled),
                                    GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-    gtk_widget_set_size_request(input_scrolled, -1, 80);
-    gtk_style_context_add_class(gtk_widget_get_style_context(input_scrolled), "input-frame");
+    gtk_widget_set_size_request(input_scrolled, -1, 60);
 
     input_view = gtk_text_view_new();
     gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(input_view), GTK_WRAP_WORD);
     gtk_widget_add_events(input_view, GDK_KEY_PRESS_MASK);
     g_signal_connect(input_view, "key-press-event", G_CALLBACK(on_input_key_press), NULL);
     gtk_container_add(GTK_CONTAINER(input_scrolled), input_view);
-    gtk_box_pack_start(GTK_BOX(chat_page), input_scrolled, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(input_frame), input_scrolled, FALSE, FALSE, 0);
 
-    // Status label
-    status_label = gtk_label_new("");
-    gtk_widget_set_no_show_all(status_label, TRUE);
-    gtk_box_pack_start(GTK_BOX(chat_page), status_label, FALSE, FALSE, 0);
-
-    // Buttons container (two rows)
-    GtkWidget *buttons_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
-
-    GtkWidget *row1 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-    GtkWidget *history_button = gtk_button_new_with_label(_("History"));
-    g_signal_connect(history_button, "clicked", G_CALLBACK(on_history_clicked), stack);
-    gtk_box_pack_start(GTK_BOX(row1), history_button, TRUE, TRUE, 0);
-
-    GtkWidget *new_chat_button = gtk_button_new_with_label(_("New Chat"));
-    g_signal_connect(new_chat_button, "clicked", G_CALLBACK(on_new_chat_clicked), NULL);
-    gtk_box_pack_start(GTK_BOX(row1), new_chat_button, TRUE, TRUE, 0);
-
-    GtkWidget *export_button = gtk_button_new_with_label(_("Export MD"));
-    g_signal_connect(export_button, "clicked", G_CALLBACK(on_export_clicked), NULL);
-    gtk_box_pack_start(GTK_BOX(row1), export_button, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(buttons_vbox), row1, FALSE, FALSE, 0);
-
-    GtkWidget *row2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-    GtkWidget *send_sel_button = gtk_button_new_with_label(_("Send Selection"));
-    g_signal_connect(send_sel_button, "clicked", G_CALLBACK(on_send_selection_clicked), NULL);
-    gtk_box_pack_start(GTK_BOX(row2), send_sel_button, TRUE, TRUE, 0);
-
-    GtkWidget *send_file_button = gtk_button_new_with_label(_("Send File"));
-    g_signal_connect(send_file_button, "clicked", G_CALLBACK(on_send_file_clicked), NULL);
-    gtk_box_pack_start(GTK_BOX(row2), send_file_button, TRUE, TRUE, 0);
-
-    send_button = gtk_button_new_with_label(_("Send"));
-    g_signal_connect(send_button, "clicked", G_CALLBACK(on_send_clicked), NULL);
-    gtk_box_pack_start(GTK_BOX(row2), send_button, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(buttons_vbox), row2, FALSE, FALSE, 0);
-
-    GtkWidget *row3 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-
-    cancel_button = gtk_button_new_with_label(_("Cancel"));
-    g_signal_connect(cancel_button, "clicked", G_CALLBACK(on_cancel_clicked), NULL);
-    gtk_widget_set_sensitive(cancel_button, FALSE);
-    gtk_box_pack_start(GTK_BOX(row3), cancel_button, TRUE, TRUE, 0);
-
-    GtkWidget *ask_toggle = gtk_toggle_button_new_with_label(_("Ask"));
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(ask_toggle), FALSE);
-    g_signal_connect(ask_toggle, "toggled", G_CALLBACK(on_ask_toggled), NULL);
-    gtk_box_pack_start(GTK_BOX(row3), ask_toggle, TRUE, TRUE, 0);
-
-    GtkWidget *update_button = gtk_button_new_with_label(_("Updates"));
-    g_signal_connect(update_button, "clicked", G_CALLBACK(on_check_updates_clicked), NULL);
-    gtk_box_pack_start(GTK_BOX(row3), update_button, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(buttons_vbox), row3, FALSE, FALSE, 0);
-
-    gtk_box_pack_start(GTK_BOX(chat_page), buttons_vbox, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(chat_page), input_frame, FALSE, FALSE, 0);
 
     gtk_stack_add_named(GTK_STACK(stack), chat_page, "chat");
 
@@ -339,17 +426,20 @@ void lumila_sidebar_set_status(const gchar *status)
 
 void lumila_sidebar_set_input_sensitive(gboolean sensitive)
 {
+    is_streaming = !sensitive;
+
     if (input_view) {
         gtk_widget_set_sensitive(input_view, sensitive);
         if (sensitive) {
             gtk_widget_grab_focus(input_view);
         }
     }
-    if (send_button) {
-        gtk_widget_set_sensitive(send_button, sensitive);
-    }
-    if (cancel_button) {
-        gtk_widget_set_sensitive(cancel_button, !sensitive);
+    if (action_button) {
+        if (is_streaming) {
+            gtk_button_set_label(GTK_BUTTON(action_button), "Cancel");
+        } else {
+            gtk_button_set_label(GTK_BUTTON(action_button), "Send");
+        }
     }
 }
 
