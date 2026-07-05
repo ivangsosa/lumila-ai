@@ -1,5 +1,5 @@
 AC_PREREQ([2.69])
-AC_INIT([lumila-ai], [0.9.2], [https://github.com/ivangsosa/lumila-ai/issues])
+AC_INIT([lumila-ai], [0.9.3], [https://github.com/ivangsosa/lumila-ai/issues])
 AC_CONFIG_SRCDIR([src/main.c])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
