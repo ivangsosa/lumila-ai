@@ -85,8 +85,13 @@ static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user
         if (provider->base.pending_msg) {
             guint status = soup_message_get_status(provider->base.pending_msg);
             if (status != 200) {
-                response_text = g_strdup_printf("HTTP Error %u: %s", status,
-                    soup_message_get_reason_phrase(provider->base.pending_msg));
+                if (lumila_provider_base_is_retriable_status(status)) {
+                    response_text = g_strdup_printf("Transient HTTP Error %u: %s (please retry)", status,
+                        soup_message_get_reason_phrase(provider->base.pending_msg));
+                } else {
+                    response_text = g_strdup_printf("HTTP Error %u: %s", status,
+                        soup_message_get_reason_phrase(provider->base.pending_msg));
+                }
             }
         }
         if (!response_text) {

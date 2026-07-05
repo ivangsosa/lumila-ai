@@ -19,9 +19,10 @@ AI Assistant plugin for Geany editor with multi-provider support, persistent his
 - **Send Selection**: envía el texto seleccionado en el editor como contexto
 - **Send Current File**: envía el archivo activo completo como contexto
 - **@referencias en el chat**: escribí `@main.c` en el input para incluir cualquier archivo como contexto
-- **Modo Ask**: toggle que desactiva la edición de archivos para consultas rápidas sin modificaciones
+- **Modo Ask**: toggle que desactiva la edición de archivos para consultas rápidas sin modificaciones (persiste entre sesiones)
 - **Exportar a Markdown**: guarda la conversación actual como `.md`
 - **Modelos custom** vía `config.json`: sobrescribe el modelo de cualquier provider
+- **Endpoints y timeouts configurables** vía `config.json`: sobrescribe la URL base y el timeout de cada provider (útil para proxies o instancias self-hosted de Ollama)
 - **Historial de conversaciones persistente**
   - Guardado automático en `~/.config/geany/plugins/lumila-ai/history/`
   - Botón **History** para listar, continuar o eliminar conversaciones
@@ -321,11 +322,12 @@ Dejá vacío (`""`) para usar el modelo por defecto del provider.
 ### Medias (requieren trabajo adicional)
 
 - [ ] **Error-aware / fix build**: capturar la salida de la ventana *Messages* de Geany para que `/fix` envíe error + archivo + línea al modelo
-- [ ] **Ejecución de comandos**: detectar bloques ` ```bash ` y mostrar botón *Run* que ejecute el comando en el directorio del proyecto (`g_spawn_async`)
-- [ ] **Menú contextual en el editor**: integrar acciones al menú derecho de Geany — *Explain this*, *Refactor selection*, *Generate docstring*, *Add type hints*
 - [ ] **Contexto multi-archivo automático**: al enviar un mensaje, incluir automáticamente el archivo activo + archivos recientes + archivos del proyecto (`*.geany`)
+- [ ] **Menú contextual en el editor**: integrar acciones al menú derecho de Geany — *Explain this*, *Refactor selection*, *Generate docstring*, *Add type hints*
+- [ ] **Ejecución de comandos**: detectar bloques ` ```bash ` y mostrar botón *Run* que ejecute el comando en el directorio del proyecto (`g_spawn_async`)
 - [ ] **Modo Plan**: la IA genera un plan paso a paso antes de ejecutar cambios, permitiendo al usuario aprobar, mejorar o rechazar cada paso individualmente
 - [ ] **Previsualización diff inline**: mostrar cambios propuestos como anotaciones de Scintilla (verde/rojo) con botones *Apply* / *Discard* antes de modificar el archivo
+- [ ] **Estimación de tokens**: mostrar en la UI cuántos tokens aprox. consume el contexto actual (chars/4) y alertar al acercarse al límite del modelo
 
 ### Avanzadas (diferenciadoras, mayor esfuerzo)
 
@@ -333,10 +335,11 @@ Dejá vacío (`""`) para usar el modelo por defecto del provider.
 - [ ] **Modo Agent / Composer**: la IA puede leer múltiples archivos, proponer cambios, pedir confirmación y aplicarlos en pasos iterativos
 - [ ] **Contexto LSP**: integrar con `geany-lsp` para capturar diagnostics (errores de tipo, lint) y enviarlos como contexto
 - [ ] **Autocompletado con IA**: sugerencias inline mientras se escribe (estilo Copilot) vía hooks de Scintilla (`char-added` + ghost text)
+- [ ] **Retry automático con backoff**: reenviar automáticamente requests en 429/5xx con backoff exponencial (actualmente sólo muestra mensaje de retry manual)
 
 ### Infraestructura
 
-- [ ] **Tests**: unit tests (cmocka/check), integration tests (mock de providers), end-to-end tests (automatización de UI con dogtail o similar)
+- [ ] **Tests de integración**: mock de providers, tests end-to-end con automatización de UI (dogtail o similar)
 - [ ] **Build multiplataforma**: compilar y distribuir binarios para Linux (AppImage/deb/rpm), Windows (MSYS2/MinGW), macOS (Homebrew)
 
 ## Troubleshooting

@@ -53,6 +53,13 @@ void lumila_provider_base_stream_start(SoupSession *session, SoupMessage *msg,
 /* Default OpenAI-compatible SSE chunk parser (choices[0].delta.content). */
 gchar *lumila_provider_base_parse_stream_openai(const gchar *data, gsize len);
 
+/* Retry logic: returns TRUE if the HTTP status code indicates a transient
+ * error that warrants a retry (429 rate limit, 500/502/503/504 server errors). */
+gboolean lumila_provider_base_is_retriable_status(guint status);
+
+/* Sleep for the given number of milliseconds. Used for retry backoff. */
+void lumila_provider_base_sleep_ms(guint ms);
+
 #endif
 
 #endif

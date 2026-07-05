@@ -337,4 +337,15 @@ gchar *lumila_provider_base_parse_stream_openai(const gchar *data, gsize len)
     return result;
 }
 
+gboolean lumila_provider_base_is_retriable_status(guint status)
+{
+    return status == 429 || status == 500 || status == 502 ||
+           status == 503 || status == 504;
+}
+
+void lumila_provider_base_sleep_ms(guint ms)
+{
+    g_usleep((guint64)ms * 1000);
+}
+
 #endif

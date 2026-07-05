@@ -120,6 +120,9 @@ void lumila_chat_init(void)
     current_provider = lumila_provider_create(entry->type);
     current_provider->model_id = entry->model_index;
 
+    // Load persisted ask_mode
+    ask_mode = lumila_config_get_ask_mode();
+
     // Create history directory
     const gchar *config_dir = geany->app->configdir;
     history_dir = g_build_filename(config_dir, "plugins", "lumila-ai", "history", NULL);
@@ -339,14 +342,33 @@ static gchar *build_history_context(void)
 
     GString *history = g_string_new("");
 
+    /* Context window management: keep only the most recent messages.
+     * Use a char-based budget (~4 chars per token) to avoid exceeding
+     * model context limits. Default budget: ~24k chars (~6k tokens).
+     * Also cap at the last 20 messages to prevent unbounded growth. */
+    const guint max_messages = 20;
+    const gsize max_chars = 24000;
+    guint start = 0;
+    if (messages->len - 1 > max_messages) {
+        start = messages->len - 1 - max_messages;
+    }
+
     /* Do not include the very last message (the one being sent now) */
-    for (guint i = 0; i < messages->len - 1; i++) {
+    for (guint i = start; i < messages->len - 1; i++) {
         LumilaMessage *msg = &g_array_index(messages, LumilaMessage, i);
+        GString *entry = g_string_new("");
         if (g_str_equal(msg->role, "user")) {
-            g_string_append_printf(history, "User: %s\n", msg->content);
+            g_string_append_printf(entry, "User: %s\n", msg->content);
         } else {
-            g_string_append_printf(history, "Assistant: %s\n", msg->content);
+            g_string_append_printf(entry, "Assistant: %s\n", msg->content);
         }
+        /* If adding this entry would exceed the budget, skip older messages */
+        if (history->len + entry->len > max_chars && history->len > 0) {
+            g_string_free(entry, TRUE);
+            break;
+        }
+        g_string_append_len(history, entry->str, entry->len);
+        g_string_free(entry, TRUE);
     }
 
     return g_string_free(history, FALSE);
@@ -484,6 +506,7 @@ static gchar *process_slash_command(const gchar *message)
 void lumila_chat_set_ask_mode(gboolean enabled)
 {
     ask_mode = enabled;
+    lumila_config_set_ask_mode(enabled);
 }
 
 static gchar *build_system_prompt(void)

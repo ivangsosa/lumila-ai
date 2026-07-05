@@ -213,3 +213,31 @@ gint lumila_config_get_timeout(LumilaProviderType provider)
 
     return 0;
 }
+
+gboolean lumila_config_get_ask_mode(void)
+{
+    if (!config_root) return FALSE;
+
+    json_t *defaults = json_object_get(config_root, "defaults");
+    if (!defaults) return FALSE;
+
+    json_t *mode = json_object_get(defaults, "ask_mode");
+    if (mode && json_is_boolean(mode)) {
+        return json_is_true(mode);
+    }
+
+    return FALSE;
+}
+
+void lumila_config_set_ask_mode(gboolean enabled)
+{
+    if (!config_root) return;
+
+    json_t *defaults = json_object_get(config_root, "defaults");
+    if (!defaults) {
+        defaults = json_object();
+        json_object_set_new(config_root, "defaults", defaults);
+    }
+
+    json_object_set_new(defaults, "ask_mode", json_boolean(enabled));
+}
