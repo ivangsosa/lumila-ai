@@ -32,6 +32,10 @@ typedef struct {
     gpointer user_data;
     GString *stream_buffer;
     GInputStream *stream;
+    /* Provider-specific SSE chunk parser.
+     * Returns newly-allocated text extracted from the JSON data line,
+     * or NULL if no content. Caller must g_free(). */
+    gchar *(*parse_chunk)(const gchar *data, gsize len);
 } LumilaStreamState;
 
 LumilaStreamState *lumila_stream_state_new(GCancellable *cancellable,
@@ -45,6 +49,9 @@ void lumila_stream_state_free(LumilaStreamState *state);
  */
 void lumila_provider_base_stream_start(SoupSession *session, SoupMessage *msg,
                                         LumilaStreamState *state);
+
+/* Default OpenAI-compatible SSE chunk parser (choices[0].delta.content). */
+gchar *lumila_provider_base_parse_stream_openai(const gchar *data, gsize len);
 
 #endif
 

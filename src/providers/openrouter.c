@@ -1,7 +1,7 @@
 #include "openrouter.h"
 #include "provider_base.h"
-#include "../../config.h"
-#include "../config.h"
+#include "../../config.h"  /* autotools-generated config.h for LUMILA_NAME */
+#include "../config.h"     /* plugin config functions */
 #include <jansson.h>
 #include <string.h>
 #include <libsoup/soup.h>
@@ -37,11 +37,11 @@ LumilaProvider *openrouter_provider_new(void)
     provider->base.type = LUMILA_PROVIDER_OPENROUTER;
 #if SOUP_CHECK_VERSION(3, 0, 0)
     provider->base.session = soup_session_new_with_options(
-        "timeout", 60,
+        "timeout", lumila_config_get_timeout(LUMILA_PROVIDER_OPENROUTER) || 60,
         NULL);
 #else
     provider->base.session = soup_session_new_with_options(
-        SOUP_SESSION_TIMEOUT, 60,
+        SOUP_SESSION_TIMEOUT, lumila_config_get_timeout(LUMILA_PROVIDER_OPENROUTER) || 60,
         NULL);
 #endif
     provider->base.cancellable = g_cancellable_new();
@@ -85,7 +85,16 @@ static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user
     } else if (bytes) {
         gsize size;
         const gchar *data = g_bytes_get_data(bytes, &size);
-        response_text = lumila_provider_base_parse_openai(data, size);
+        if (provider->base.pending_msg) {
+            guint status = soup_message_get_status(provider->base.pending_msg);
+            if (status != 200) {
+                response_text = g_strdup_printf("HTTP Error %u: %s", status,
+                    soup_message_get_reason_phrase(provider->base.pending_msg));
+            }
+        }
+        if (!response_text) {
+            response_text = lumila_provider_base_parse_openai(data, size);
+        }
         g_bytes_unref(bytes);
     }
 
@@ -99,6 +108,10 @@ static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user
 
     provider->callback = NULL;
     provider->user_data = NULL;
+    if (provider->base.pending_msg) {
+        g_object_unref(provider->base.pending_msg);
+        provider->base.pending_msg = NULL;
+    }
 }
 #else
 static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer user_data)
@@ -132,6 +145,8 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
             json_decref(root);
         }
         soup_buffer_free(buffer);
+    } else {
+        response_text = "Error: HTTP request failed (non-200 status)";
     }
 
     if (callback) {
@@ -193,7 +208,7 @@ static void openrouter_send_message(LumilaProvider *provider, const gchar *messa
     json_decref(root);
 
 #if SOUP_CHECK_VERSION(3, 0, 0)
-    SoupMessage *msg = soup_message_new("POST", OPENROUTER_API_BASE);
+    SoupMessage *msg = soup_message_new("POST", lumila_config_get_endpoint(LUMILA_PROVIDER_OPENROUTER) ? lumila_config_get_endpoint(LUMILA_PROVIDER_OPENROUTER) : OPENROUTER_API_BASE);
 
     soup_message_headers_append(soup_message_get_request_headers(msg), "Content-Type", "application/json");
 
@@ -205,15 +220,17 @@ static void openrouter_send_message(LumilaProvider *provider, const gchar *messa
     soup_message_headers_append(soup_message_get_request_headers(msg), "HTTP-Referer", "https://github.com/ivangsosa/lumila-ai");
     soup_message_headers_append(soup_message_get_request_headers(msg), "X-Title", LUMILA_NAME);
 
-    soup_message_set_request_body_from_bytes(msg, "application/json", g_bytes_new(json_body, strlen(json_body)));
+    GBytes *body_bytes = g_bytes_new(json_body, strlen(json_body));
+    soup_message_set_request_body_from_bytes(msg, "application/json", body_bytes);
+    g_bytes_unref(body_bytes);
     g_free(json_body);
 
     // Send async
     soup_session_send_and_read_async(provider->session, msg, G_PRIORITY_DEFAULT,
                                       provider->cancellable, on_message_sent, provider);
-    g_object_unref(msg);
+    provider->pending_msg = msg;
 #else
-    SoupMessage *msg = soup_message_new("POST", OPENROUTER_API_BASE);
+    SoupMessage *msg = soup_message_new("POST", lumila_config_get_endpoint(LUMILA_PROVIDER_OPENROUTER) ? lumila_config_get_endpoint(LUMILA_PROVIDER_OPENROUTER) : OPENROUTER_API_BASE);
 
     soup_message_headers_append(msg->request_headers, "Content-Type", "application/json");
 
@@ -275,14 +292,16 @@ static void openrouter_send_message_stream(LumilaProvider *provider, const gchar
     gchar *json_body = json_dumps(root, 0);
     json_decref(root);
 
-    SoupMessage *msg = soup_message_new("POST", OPENROUTER_API_BASE);
+    SoupMessage *msg = soup_message_new("POST", lumila_config_get_endpoint(LUMILA_PROVIDER_OPENROUTER) ? lumila_config_get_endpoint(LUMILA_PROVIDER_OPENROUTER) : OPENROUTER_API_BASE);
     soup_message_headers_append(soup_message_get_request_headers(msg), "Content-Type", "application/json");
     gchar *auth_header = g_strdup_printf("Bearer %s", api_key);
     soup_message_headers_append(soup_message_get_request_headers(msg), "Authorization", auth_header);
     g_free(auth_header);
     soup_message_headers_append(soup_message_get_request_headers(msg), "HTTP-Referer", "https://github.com/ivangsosa/lumila-ai");
     soup_message_headers_append(soup_message_get_request_headers(msg), "X-Title", LUMILA_NAME);
-    soup_message_set_request_body_from_bytes(msg, "application/json", g_bytes_new(json_body, strlen(json_body)));
+    GBytes *body_bytes = g_bytes_new(json_body, strlen(json_body));
+    soup_message_set_request_body_from_bytes(msg, "application/json", body_bytes);
+    g_bytes_unref(body_bytes);
     g_free(json_body);
 
     LumilaStreamState *state = lumila_stream_state_new(provider->cancellable,

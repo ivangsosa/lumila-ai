@@ -3,6 +3,7 @@
 #include "config.h"
 #include "plugin.h"
 #include "history_ui.h"
+#include "providers/model_registry.h"
 #include <geanyplugin.h>
 
 static GtkWidget *sidebar_widget = NULL;
@@ -75,7 +76,7 @@ static void on_check_updates_clicked(GtkButton *button, gpointer user_data)
         "```\n\n"
         "## Step 2: Download the latest version\n\n"
         "```bash\n"
-        "wget https://github.com/usuario/lumila-ai/releases/latest/download/lumila-ai.so \\\n"
+        "wget https://github.com/ivangsosa/lumila-ai/releases/latest/download/lumila-ai.so \\\n"
         "  -O ~/.config/geany/plugins/lumila-ai/lumila-ai.so.new\n"
         "```\n\n"
         "## Step 3: Backup and replace\n\n"
@@ -321,32 +322,16 @@ void lumila_sidebar_init(void)
     gtk_menu_button_set_direction(GTK_MENU_BUTTON(mode_combo), GTK_ARROW_UP);
     gtk_box_pack_start(GTK_BOX(bottom_toolbar), mode_combo, FALSE, FALSE, 0);
 
-    // Model selector
+    // Model selector - populated dynamically from registry
     provider_combo = gtk_combo_box_text_new();
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Claude Sonnet 4");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Claude Opus 4");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "GPT-4.1");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "GPT-4.1 mini");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Gemini 2.5 Flash");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Gemini 2.5 Pro");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Gemma 4 12B");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Ollama Llama 3.3");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Ollama Qwen3");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "OpenRouter Auto");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "DeepSeek V3");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "DeepSeek R1");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Mistral Large");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Ollama Mistral Small");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "OpenRouter Free");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Moonshot Kimi K2.6");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "MAI-Code-1");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "GPT-4.1 nano");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "Mistral Small 3.1");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "OpenRouter GLM-4");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "OpenRouter Grok 3");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo), "OpenRouter Qwen3-235B");
+    for (gint i = 0; i < LUMILA_NUM_PROVIDERS; i++) {
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo),
+            lumila_model_registry_get_display_name(i));
+    }
 
     gint default_provider = lumila_config_get_default_provider();
+    if (default_provider < 0 || default_provider >= LUMILA_NUM_PROVIDERS)
+        default_provider = 9;
     gtk_combo_box_set_active(GTK_COMBO_BOX(provider_combo), default_provider);
     g_signal_connect(provider_combo, "changed", G_CALLBACK(on_provider_changed), NULL);
     gtk_box_pack_start(GTK_BOX(bottom_toolbar), provider_combo, FALSE, FALSE, 0);

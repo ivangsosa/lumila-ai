@@ -14,6 +14,14 @@ static gchar *get_history_dir(void)
                             "plugins", "lumila-ai", "history", NULL);
 }
 
+gint lumila_history_compare_by_date(LumilaHistoryEntry *a, LumilaHistoryEntry *b)
+{
+    /* Sort by created_at descending (newest first) */
+    const gchar *da = a->created_at ? a->created_at : "";
+    const gchar *db = b->created_at ? b->created_at : "";
+    return g_strcmp0(db, da);
+}
+
 GList *lumila_history_list(void)
 {
     GList *list = NULL;
@@ -57,15 +65,18 @@ GList *lumila_history_list(void)
                 entry->model_name = g_strdup("Unknown");
             }
 
-            list = g_list_insert_sorted(list, entry,
-                (GCompareFunc) g_strcmp0);
+            list = g_list_prepend(list, entry);
             json_decref(root);
+        } else {
+            g_warning("Lumila: failed to parse history file %s: %s", name, err.text);
         }
         g_free(path);
     }
 
     g_dir_close(gdir);
     g_free(dir);
+    /* Sort by created_at descending (newest first) */
+    list = g_list_sort(list, (GCompareFunc)lumila_history_compare_by_date);
     return list;
 }
 
@@ -98,7 +109,10 @@ GArray *lumila_history_load_messages(const gchar *filename)
     json_t *root = json_load_file(path, 0, &err);
     g_free(path);
 
-    if (!root) return NULL;
+    if (!root) {
+        g_warning("Lumila: failed to load history messages: %s", err.text);
+        return NULL;
+    }
 
     json_t *arr = json_object_get(root, "messages");
     if (arr && json_is_array(arr)) {
@@ -111,8 +125,8 @@ GArray *lumila_history_load_messages(const gchar *filename)
             json_t *r = json_object_get(msg_obj, "role");
             json_t *c = json_object_get(msg_obj, "content");
             json_t *t = json_object_get(msg_obj, "timestamp");
-            msg.role = g_strdup(json_string_value(r));
-            msg.content = g_strdup(json_string_value(c));
+            msg.role = g_strdup((r && json_is_string(r)) ? json_string_value(r) : "unknown");
+            msg.content = g_strdup((c && json_is_string(c)) ? json_string_value(c) : "");
             msg.timestamp = g_strdup(t && json_is_string(t) ? json_string_value(t) : "");
             g_array_append_val(msgs, msg);
         }
@@ -139,7 +153,10 @@ gchar *lumila_history_load_title(const gchar *filename)
     json_t *root = json_load_file(path, 0, &err);
     g_free(path);
 
-    if (!root) return NULL;
+    if (!root) {
+        g_warning("Lumila: failed to load history title: %s", err.text);
+        return NULL;
+    }
 
     json_t *title = json_object_get(root, "title");
     gchar *result = NULL;
@@ -172,6 +189,7 @@ gboolean lumila_history_rename(const gchar *old_filename, const gchar *new_title
     json_error_t err;
     json_t *root = json_load_file(path, 0, &err);
     if (!root) {
+        g_warning("Lumila: failed to load history for rename: %s", err.text);
         g_free(path);
         return FALSE;
     }

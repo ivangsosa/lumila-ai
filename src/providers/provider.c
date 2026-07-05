@@ -95,6 +95,10 @@ void lumila_provider_free(LumilaProvider *provider)
         if (provider->cancel) {
             provider->cancel(provider);
         }
+        if (provider->pending_msg) {
+            g_object_unref(provider->pending_msg);
+            provider->pending_msg = NULL;
+        }
         if (provider->session) {
             g_object_unref(provider->session);
         }

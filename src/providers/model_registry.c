@@ -28,7 +28,7 @@ const LumilaModelEntry lumila_model_registry[LUMILA_NUM_PROVIDERS] = {
 const LumilaModelEntry *lumila_model_registry_lookup(gint provider_id)
 {
     if (provider_id < 0 || provider_id >= LUMILA_NUM_PROVIDERS)
-        provider_id = 8; /* OpenRouter default */
+        provider_id = 9; /* OpenRouter Auto default */
     return &lumila_model_registry[provider_id];
 }
 

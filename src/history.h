@@ -13,6 +13,7 @@ typedef struct {
 
 GList *lumila_history_list(void);
 void lumila_history_entry_free(LumilaHistoryEntry *entry);
+gint lumila_history_compare_by_date(LumilaHistoryEntry *a, LumilaHistoryEntry *b);
 
 GArray *lumila_history_load_messages(const gchar *filename);
 void lumila_history_free_messages(GArray *msgs);

@@ -36,7 +36,6 @@ static gint current_provider_id = 0;
 static gchar *conversation_id = NULL;
 static gchar *history_dir = NULL;
 static gchar *conversation_title = NULL;
-static GString *stream_response = NULL;
 static gboolean ask_mode = FALSE;
 
 /* Idle callback data for thread-safe UI updates */
@@ -93,10 +92,6 @@ static void on_stream_chunk(const gchar *chunk, gboolean is_final, gpointer user
 
     if (!chunk || !*chunk) return;
 
-    if (!stream_response)
-        stream_response = g_string_new("");
-    g_string_append(stream_response, chunk);
-
     StreamIdleData *data = g_new0(StreamIdleData, 1);
     data->chunk = g_strdup(chunk);
     data->is_final = FALSE;
@@ -110,10 +105,6 @@ static void on_stream_final(const gchar *response, gpointer user_data)
     StreamIdleData *data = g_new0(StreamIdleData, 1);
     data->is_final = TRUE;
     data->full_response = response ? g_strdup(response) : NULL;
-    if (stream_response) {
-        g_string_free(stream_response, TRUE);
-        stream_response = NULL;
-    }
     g_idle_add(stream_idle_callback, data);
 }
 
@@ -159,11 +150,6 @@ void lumila_chat_cleanup(void)
     if (current_provider) {
         lumila_provider_free(current_provider);
         current_provider = NULL;
-    }
-
-    if (stream_response) {
-        g_string_free(stream_response, TRUE);
-        stream_response = NULL;
     }
 
     g_free(conversation_id);
@@ -384,6 +370,7 @@ static gchar *get_git_diff(void)
     g_spawn_command_line_sync("git diff --cached", &output, NULL, &exit_status, NULL);
     if (exit_status != 0 || !output || !*output) {
         g_free(output);
+        output = NULL;
         g_spawn_command_line_sync("git diff", &output, NULL, &exit_status, NULL);
     }
     if (!output || !*output) {
@@ -419,10 +406,10 @@ static gchar *extract_references(const gchar *message)
             }
         }
 
-        if (content) {
+        if (content && *content) {
             g_string_append_printf(refs, "\n\n[Referenced file: %s]\n```\n%s\n```", filename, content);
-            g_free(content);
         }
+        g_free(content);
         g_free(filename);
     }
 
@@ -538,8 +525,10 @@ void lumila_chat_send_message(const gchar *message)
         gchar *newline = strchr(first_line, '\n');
         if (newline) *newline = '\0';
         if (strlen(first_line) > 60) {
-            first_line[60] = '\0';
-            strcat(first_line, "...");
+            gchar *truncated = g_strndup(first_line, 60);
+            g_free(first_line);
+            first_line = g_strdup_printf("%s...", truncated);
+            g_free(truncated);
         }
         g_free(conversation_title);
         conversation_title = first_line;
@@ -692,12 +681,21 @@ void lumila_chat_export_markdown(void)
     g_free(export_dir);
 }
 
+static gboolean deferred_provider_free(gpointer user_data)
+{
+    LumilaProvider *old = (LumilaProvider *)user_data;
+    lumila_provider_free(old);
+    return G_SOURCE_REMOVE;
+}
+
 void lumila_chat_set_provider(gint provider_id)
 {
     current_provider_id = provider_id;
 
     if (current_provider) {
-        lumila_provider_free(current_provider);
+        /* Cancel and defer free so pending async callbacks can fire safely */
+        lumila_provider_cancel(current_provider);
+        g_idle_add(deferred_provider_free, current_provider);
     }
 
     const LumilaModelEntry *entry = lumila_model_registry_lookup(provider_id);
@@ -738,7 +736,9 @@ void lumila_chat_save_history(void)
     // Save to file
     gchar *filename = g_strdup_printf("%s.json", conversation_id);
     gchar *filepath = g_build_filename(history_dir, filename, NULL);
-    json_dump_file(root, filepath, JSON_INDENT(2));
+    if (json_dump_file(root, filepath, JSON_INDENT(2)) != 0) {
+        g_warning("Lumila: failed to save history to %s", filepath);
+    }
 
     g_free(filename);
     g_free(filepath);
@@ -823,7 +823,12 @@ void lumila_chat_load_conversation(const gchar *filename)
 
     // Update conversation ID from filename
     g_free(conversation_id);
-    conversation_id = g_strndup(filename, strlen(filename) - 5); // remove .json
+    gsize flen = strlen(filename);
+    if (flen > 5 && g_str_has_suffix(filename, ".json")) {
+        conversation_id = g_strndup(filename, flen - 5);
+    } else {
+        conversation_id = g_strdup(filename);
+    }
 
     // Restore title from history
     g_free(conversation_title);

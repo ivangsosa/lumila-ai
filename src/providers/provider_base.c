@@ -252,7 +252,22 @@ static void lumila_provider_base_read_stream_line(GDataInputStream *data_stream,
                 }
             }
             json_decref(root);
+        } else if (jerr.text[0]) {
+            /* Partial JSON chunk - log but continue (next line may complete it) */
+            g_debug("Lumila: SSE JSON parse: %s", jerr.text);
         }
+    } else if (state->parse_chunk) {
+        /* Provider-specific chunk parser (e.g. Anthropic, Google, Ollama) */
+        gchar *text = state->parse_chunk(line, len);
+        if (text && *text) {
+            if (!state->stream_buffer)
+                state->stream_buffer = g_string_new("");
+            g_string_append(state->stream_buffer, text);
+            if (state->chunk_cb) {
+                state->chunk_cb(text, FALSE, state->user_data);
+            }
+        }
+        g_free(text);
     }
 
     g_free(line);
@@ -273,6 +288,7 @@ LumilaStreamState *lumila_stream_state_new(GCancellable *cancellable,
     state->final_cb = final_cb;
     state->user_data = user_data;
     state->stream_buffer = g_string_new("");
+    state->parse_chunk = NULL;
     return state;
 }
 
@@ -295,6 +311,30 @@ void lumila_provider_base_stream_start(SoupSession *session, SoupMessage *msg,
                             state->cancellable,
                             lumila_provider_base_on_stream_open, state);
     g_object_unref(msg);
+}
+
+/* Default OpenAI-compatible SSE chunk parser (choices[0].delta.content) */
+gchar *lumila_provider_base_parse_stream_openai(const gchar *data, gsize len)
+{
+    (void)len;
+    json_error_t jerr;
+    json_t *root = json_loads(data, 0, &jerr);
+    if (!root) return NULL;
+
+    gchar *result = NULL;
+    json_t *choices = json_object_get(root, "choices");
+    if (choices && json_is_array(choices) && json_array_size(choices) > 0) {
+        json_t *first = json_array_get(choices, 0);
+        json_t *delta = json_object_get(first, "delta");
+        if (delta) {
+            json_t *content = json_object_get(delta, "content");
+            if (content && json_is_string(content)) {
+                result = g_strdup(json_string_value(content));
+            }
+        }
+    }
+    json_decref(root);
+    return result;
 }
 
 #endif

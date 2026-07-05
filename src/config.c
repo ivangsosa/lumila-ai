@@ -27,6 +27,9 @@ void lumila_config_init(void)
     json_t *root = json_load_file(config_file, 0, &error);
 
     if (!root) {
+        if (error.text[0]) {
+            g_warning("Lumila: config parse error: %s (creating new config)", error.text);
+        }
         root = json_object();
         json_object_set_new(root, "version", json_string(LUMILA_VERSION));
 
@@ -54,7 +57,9 @@ void lumila_config_cleanup(void)
 {
     if (config_root) {
         // Save config
-        json_dump_file(config_root, config_file, JSON_INDENT(2));
+        if (json_dump_file(config_root, config_file, JSON_INDENT(2)) != 0) {
+            g_warning("Lumila: failed to save config to %s", config_file);
+        }
         json_decref(config_root);
         config_root = NULL;
         api_keys_obj = NULL;
@@ -175,4 +180,36 @@ const gchar *lumila_config_get_custom_model(LumilaProviderType provider)
     }
 
     return NULL;
+}
+
+const gchar *lumila_config_get_endpoint(LumilaProviderType provider)
+{
+    if (!config_root) return NULL;
+
+    json_t *endpoints = json_object_get(config_root, "endpoints");
+    if (!endpoints || !json_is_object(endpoints)) return NULL;
+
+    const gchar *key_name = lumila_provider_get_key_name(provider);
+    json_t *ep = json_object_get(endpoints, key_name);
+    if (ep && json_is_string(ep)) {
+        return json_string_value(ep);
+    }
+
+    return NULL;
+}
+
+gint lumila_config_get_timeout(LumilaProviderType provider)
+{
+    if (!config_root) return 0;
+
+    json_t *timeouts = json_object_get(config_root, "timeouts");
+    if (!timeouts || !json_is_object(timeouts)) return 0;
+
+    const gchar *key_name = lumila_provider_get_key_name(provider);
+    json_t *t = json_object_get(timeouts, key_name);
+    if (t && json_is_integer(t)) {
+        return (gint) json_integer_value(t);
+    }
+
+    return 0;
 }

@@ -1,9 +1,9 @@
 [Desktop Entry]
 Name=Lumila AI
-Comment=AI Assistant for Geany - Multi-provider Chat
+Comment=AI Assistant for Geany - Multi-provider chat
 Type=Addon
 X-Geany-Plugin-Name=lumila-ai
 X-Geany-Plugin-Description=AI-powered coding assistant with support for OpenAI, Anthropic, Google, DeepSeek, Mistral, OpenRouter and Ollama
-X-Geany-Plugin-Version=0.9.1
+X-Geany-Plugin-Version=@VERSION@
 X-Geany-Plugin-Author=Iván Gabriel Sosa
 X-Geany-Plugin-Package=lumila-ai

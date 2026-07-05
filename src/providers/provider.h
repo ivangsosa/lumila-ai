@@ -25,6 +25,7 @@ struct _LumilaProvider {
     gint model_id;
     SoupSession *session;
     GCancellable *cancellable;
+    SoupMessage *pending_msg;  /* Used for HTTP status check in async callbacks */
 
     void (*send_message)(LumilaProvider *provider, const gchar *message,
                          LumilaResponseCallback callback, gpointer user_data);

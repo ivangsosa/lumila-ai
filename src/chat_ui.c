@@ -139,6 +139,7 @@ static gchar *get_current_time_string(void)
 {
     time_t now = time(NULL);
     struct tm *tm_info = localtime(&now);
+    if (!tm_info) return g_strdup("--:--");
     gchar *time_str = g_strdup_printf("%02d:%02d", tm_info->tm_hour, tm_info->tm_min);
     return time_str;
 }
