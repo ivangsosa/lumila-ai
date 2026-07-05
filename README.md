@@ -14,7 +14,7 @@ AI Assistant plugin for Geany editor with multi-provider support, persistent his
   - Usa el formato ` ```file:nombre.ext ` para editar
   - Crea archivos nuevos si no existen
   - Resumen de cambios en el chat
-- **Streaming de respuestas** (OpenAI, DeepSeek, Mistral, OpenRouter, Moonshot con libsoup-3.0): texto en tiempo real
+- **Streaming de respuestas** (todos los providers con libsoup-3.0): texto en tiempo real
 - **Slash commands** rápidos: `/explain`, `/refactor`, `/test`, `/doc`, `/fix`, `/commit`, `/review`
 - **Send Selection**: envía el texto seleccionado en el editor como contexto
 - **Send Current File**: envía el archivo activo completo como contexto
@@ -138,6 +138,26 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
     "ollama": "",
     "deepseek": "",
     "mistral": ""
+  },
+  "endpoints": {
+    "openai": "",
+    "anthropic": "",
+    "google": "",
+    "moonshot": "",
+    "openrouter": "",
+    "ollama": "",
+    "deepseek": "",
+    "mistral": ""
+  },
+  "timeouts": {
+    "openai": 60,
+    "anthropic": 60,
+    "google": 60,
+    "moonshot": 60,
+    "openrouter": 60,
+    "ollama": 120,
+    "deepseek": 60,
+    "mistral": 60
   }
 }
 ```
@@ -148,7 +168,9 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
 - **max_tokens**: máximo de tokens (100 - 8000, default 2048)
 - **top_p**: muestreo nucleus (0.0 - 1.0, default 0.9)
 - **repeat_penalty**: penalización de repetición (default 1.1)
-- **default_provider_id**: modelo por defecto (0-21, default 9 = DeepSeek V3)
+- **default_provider_id**: modelo por defecto (0-21, default 9 = OpenRouter Auto)
+- **endpoints**: sobrescribe la URL base de cada provider (vacío = usar default). Útil para proxies o instancias self-hosted de Ollama
+- **timeouts**: timeout en segundos por provider (default 60s, Ollama 120s)
 
 ### Configuraciones sugeridas por modelo
 
@@ -156,8 +178,8 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
 |---|---|---|---|---|---|
 | **DeepSeek V3** (rápido, barato, bueno para código) | 0.3 | 2048 | 0.9 | 1.1 | 10 |
 | **DeepSeek R1** (raciocinio profundo) | 0.2 | 4096 | 0.95 | 1.1 | 11 |
-| **Ollama Qwen3:8b** (local, ligero) | 0.5 | 2048 | 0.9 | 1.05 | 7 |
-| **OpenRouter Auto** (gratis, enrutamiento automático) | 0.3 | 2048 | 0.9 | 1.1 | 8 |
+| **Ollama Qwen3:8b** (local, ligero) | 0.5 | 2048 | 0.9 | 1.05 | 8 |
+| **OpenRouter Auto** (gratis, enrutamiento automático) | 0.3 | 2048 | 0.9 | 1.1 | 9 |
 | **Genérica** (Claude, GPT-4.1, Gemini) | 0.3 | 2048 | 0.9 | 1.1 | según modelo |
 
 - `temperature` baja (0.2-0.3) = respuestas más directas y reproducibles, ideal para código

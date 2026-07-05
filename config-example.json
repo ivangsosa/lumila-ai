@@ -26,5 +26,25 @@
     "ollama": "",
     "deepseek": "",
     "mistral": ""
+  },
+  "endpoints": {
+    "openai": "",
+    "anthropic": "",
+    "google": "",
+    "moonshot": "",
+    "openrouter": "",
+    "ollama": "",
+    "deepseek": "",
+    "mistral": ""
+  },
+  "timeouts": {
+    "openai": 60,
+    "anthropic": 60,
+    "google": 60,
+    "moonshot": 60,
+    "openrouter": 60,
+    "ollama": 120,
+    "deepseek": 60,
+    "mistral": 60
   }
 }
