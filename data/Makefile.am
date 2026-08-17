@@ -1,7 +1,7 @@
 EXTRA_DIST = lumila-ai.desktop.in
 
-datadir = $(datadir)/geany-plugins/lumila-ai
-data_DATA = lumila-ai.desktop
+pkgdatadir = $(datadir)/geany-plugins/lumila-ai
+pkgdata_DATA = lumila-ai.desktop
 
 lumila-ai.desktop: lumila-ai.desktop.in
 	$(AM_V_GEN)sed -e 's|@VERSION@|$(VERSION)|g' \
