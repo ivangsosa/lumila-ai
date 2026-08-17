@@ -192,7 +192,8 @@ const gchar *lumila_config_get_endpoint(LumilaProviderType provider)
     const gchar *key_name = lumila_provider_get_key_name(provider);
     json_t *ep = json_object_get(endpoints, key_name);
     if (ep && json_is_string(ep)) {
-        return json_string_value(ep);
+        const gchar *val = json_string_value(ep);
+        return (val && *val) ? val : NULL;
     }
 
     return NULL;

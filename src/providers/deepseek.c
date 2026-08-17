@@ -38,11 +38,11 @@ LumilaProvider *deepseek_provider_new(void)
     provider->base.type = LUMILA_PROVIDER_DEEPSEEK;
 #if SOUP_CHECK_VERSION(3, 0, 0)
     provider->base.session = soup_session_new_with_options(
-        "timeout", lumila_config_get_timeout(LUMILA_PROVIDER_DEEPSEEK) || 60,
+        "timeout", (lumila_config_get_timeout(LUMILA_PROVIDER_DEEPSEEK) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_DEEPSEEK) : 60),
         NULL);
 #else
     provider->base.session = soup_session_new_with_options(
-        SOUP_SESSION_TIMEOUT, lumila_config_get_timeout(LUMILA_PROVIDER_DEEPSEEK) || 60,
+        SOUP_SESSION_TIMEOUT, (lumila_config_get_timeout(LUMILA_PROVIDER_DEEPSEEK) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_DEEPSEEK) : 60),
         NULL);
 #endif
     provider->base.cancellable = g_cancellable_new();
