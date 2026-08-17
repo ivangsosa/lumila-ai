@@ -104,34 +104,142 @@ gchar *lumila_provider_base_parse_google(const gchar *data, gsize size)
 
 gchar *lumila_provider_base_parse_ollama(const gchar *data, gsize size)
 {
-    /* Ollama returns NDJSON; parse the last line */
-    const gchar *last_line = data;
-    for (gsize i = 0; i < size; i++) {
-        if (data[i] == '\n' && i + 1 < size) {
-            last_line = &data[i + 1];
+    /* Ollama returns NDJSON: multiple JSON objects separated by newlines.
+     * Each object has a "response" field with a chunk of text.
+     * We concatenate all chunks and check for errors in any line.
+     * The last line typically has "done": true. */
+    GString *full_response = g_string_new("");
+    gboolean had_error = FALSE;
+    gchar *error_msg = NULL;
+
+    const gchar *start = data;
+    const gchar *end = data + size;
+    const gchar *line_start = start;
+
+    for (const gchar *p = start; p <= end; p++) {
+        if (p == end || *p == '\n') {
+            gsize line_len = p - line_start;
+            if (line_len > 0) {
+                gchar *line = g_strndup(line_start, line_len);
+                json_error_t json_error;
+                json_t *root = json_loads(line, 0, &json_error);
+
+                if (root) {
+                    json_t *error_obj = json_object_get(root, "error");
+                    if (error_obj && json_is_string(error_obj)) {
+                        had_error = TRUE;
+                        g_free(error_msg);
+                        error_msg = g_strdup_printf("API Error: %s", json_string_value(error_obj));
+                    } else {
+                        json_t *response_obj = json_object_get(root, "response");
+                        if (response_obj && json_is_string(response_obj)) {
+                            g_string_append(full_response, json_string_value(response_obj));
+                        }
+                    }
+                    json_decref(root);
+                }
+                g_free(line);
+            }
+            line_start = p + 1;
         }
     }
 
-    json_error_t json_error;
-    json_t *root = json_loads(last_line, 0, &json_error);
-    gchar *response_text = NULL;
-
-    if (!root) {
-        return g_strdup_printf("JSON Parse Error: %s", json_error.text);
-    }
-
-    json_t *error_obj = json_object_get(root, "error");
-    if (error_obj && json_is_string(error_obj)) {
-        response_text = g_strdup_printf("API Error: %s", json_string_value(error_obj));
+    gchar *result;
+    if (had_error && full_response->len == 0) {
+        result = error_msg ? error_msg : g_strdup("Unknown API Error");
+        g_string_free(full_response, TRUE);
+    } else if (had_error) {
+        /* Si hay respuesta parcial pero también error, devolver la respuesta */
+        result = g_string_free(full_response, FALSE);
+        g_free(error_msg);
     } else {
-        json_t *response_obj = json_object_get(root, "response");
-        if (response_obj && json_is_string(response_obj)) {
-            response_text = g_strdup(json_string_value(response_obj));
-        }
+        result = g_string_free(full_response, FALSE);
+        g_free(error_msg);
     }
 
-    json_decref(root);
-    return response_text;
+    return result;
+}
+
+/* --- Multi-turn message helpers --- */
+
+json_t *lumila_provider_base_build_messages_openai(const gchar *system_prompt,
+                                                    GArray *messages)
+{
+    json_t *arr = json_array();
+    if (system_prompt && *system_prompt) {
+        json_t *sys = json_object();
+        json_object_set_new(sys, "role", json_string("system"));
+        json_object_set_new(sys, "content", json_string(system_prompt));
+        json_array_append_new(arr, sys);
+    }
+    if (messages) {
+        for (guint i = 0; i < messages->len; i++) {
+            LumilaMessage *m = &g_array_index(messages, LumilaMessage, i);
+            json_t *obj = json_object();
+            json_object_set_new(obj, "role", json_string(m->role));
+            json_object_set_new(obj, "content", json_string(m->content));
+            json_array_append_new(arr, obj);
+        }
+    }
+    return arr;
+}
+
+json_t *lumila_provider_base_build_messages_anthropic(GArray *messages)
+{
+    json_t *arr = json_array();
+    if (messages) {
+        for (guint i = 0; i < messages->len; i++) {
+            LumilaMessage *m = &g_array_index(messages, LumilaMessage, i);
+            json_t *obj = json_object();
+            json_object_set_new(obj, "role", json_string(m->role));
+            json_object_set_new(obj, "content", json_string(m->content));
+            json_array_append_new(arr, obj);
+        }
+    }
+    return arr;
+}
+
+json_t *lumila_provider_base_build_messages_google(GArray *messages)
+{
+    json_t *arr = json_array();
+    if (messages) {
+        for (guint i = 0; i < messages->len; i++) {
+            LumilaMessage *m = &g_array_index(messages, LumilaMessage, i);
+            json_t *obj = json_object();
+            /* Google uses "model" instead of "assistant" */
+            const char *role = g_str_equal(m->role, "assistant") ? "model" : m->role;
+            json_object_set_new(obj, "role", json_string(role));
+            json_t *parts = json_array();
+            json_t *part = json_object();
+            json_object_set_new(part, "text", json_string(m->content));
+            json_array_append_new(parts, part);
+            json_object_set_new(obj, "parts", parts);
+            json_array_append_new(arr, obj);
+        }
+    }
+    return arr;
+}
+
+json_t *lumila_provider_base_build_messages_ollama(const gchar *system_prompt,
+                                                    GArray *messages)
+{
+    json_t *arr = json_array();
+    if (system_prompt && *system_prompt) {
+        json_t *sys = json_object();
+        json_object_set_new(sys, "role", json_string("system"));
+        json_object_set_new(sys, "content", json_string(system_prompt));
+        json_array_append_new(arr, sys);
+    }
+    if (messages) {
+        for (guint i = 0; i < messages->len; i++) {
+            LumilaMessage *m = &g_array_index(messages, LumilaMessage, i);
+            json_t *obj = json_object();
+            json_object_set_new(obj, "role", json_string(m->role));
+            json_object_set_new(obj, "content", json_string(m->content));
+            json_array_append_new(arr, obj);
+        }
+    }
+    return arr;
 }
 
 #if SOUP_CHECK_VERSION(3, 0, 0)
@@ -229,6 +337,7 @@ static void lumila_provider_base_read_stream_line(GDataInputStream *data_stream,
             return;
         }
 
+        gboolean extracted = FALSE;
         json_error_t jerr;
         json_t *root = json_loads(data, 0, &jerr);
         if (root) {
@@ -247,6 +356,7 @@ static void lumila_provider_base_read_stream_line(GDataInputStream *data_stream,
                             if (state->chunk_cb) {
                                 state->chunk_cb(text, FALSE, state->user_data);
                             }
+                            extracted = TRUE;
                         }
                     }
                 }
@@ -256,8 +366,24 @@ static void lumila_provider_base_read_stream_line(GDataInputStream *data_stream,
             /* Partial JSON chunk - log but continue (next line may complete it) */
             g_debug("Lumila: SSE JSON parse: %s", jerr.text);
         }
+
+        /* Fallback: if OpenAI-style parsing extracted nothing, try the
+         * provider-specific chunk parser (e.g. Anthropic, Google) which
+         * also use the "data: " SSE prefix but with a different schema. */
+        if (!extracted && state->parse_chunk) {
+            gchar *text = state->parse_chunk(data, strlen(data));
+            if (text && *text) {
+                if (!state->stream_buffer)
+                    state->stream_buffer = g_string_new("");
+                g_string_append(state->stream_buffer, text);
+                if (state->chunk_cb) {
+                    state->chunk_cb(text, FALSE, state->user_data);
+                }
+            }
+            g_free(text);
+        }
     } else if (state->parse_chunk) {
-        /* Provider-specific chunk parser (e.g. Anthropic, Google, Ollama) */
+        /* Provider-specific chunk parser (e.g. Ollama NDJSON without "data: " prefix) */
         gchar *text = state->parse_chunk(line, len);
         if (text && *text) {
             if (!state->stream_buffer)

@@ -3,6 +3,7 @@
 
 #include "provider.h"
 #include <libsoup/soup.h>
+#include <jansson.h>
 
 /* Parse JSON response helpers.
  * All return a newly allocated gchar* or NULL.
@@ -20,6 +21,34 @@ gchar *lumila_provider_base_parse_google(const gchar *data, gsize size);
 
 /* Ollama format (last line NDJSON, .response) */
 gchar *lumila_provider_base_parse_ollama(const gchar *data, gsize size);
+
+/* --- Multi-turn message helpers --- */
+
+/* Build a JSON array of messages in OpenAI-compatible format:
+ * [{role:"system",content:system_prompt}, {role:"user",...}, {role:"assistant",...}, ...]
+ * Returns a newly-allocated json_t* (caller must json_decref()).
+ * If system_prompt is NULL/empty, no system message is prepended. */
+json_t *lumila_provider_base_build_messages_openai(const gchar *system_prompt,
+                                                    GArray *messages);
+
+/* Build a JSON array of messages in Anthropic format:
+ * [{role:"user",...}, {role:"assistant",...}, ...] (no system role).
+ * System prompt is handled separately by the Anthropic provider.
+ * Returns a newly-allocated json_t* (caller must json_decref()). */
+json_t *lumila_provider_base_build_messages_anthropic(GArray *messages);
+
+/* Build a JSON array of contents in Google/Gemini format:
+ * [{role:"user",parts:[{text:...}]}, {role:"model",parts:[{text:...}]}, ...]
+ * "assistant" role is mapped to "model".
+ * Returns a newly-allocated json_t* (caller must json_decref()). */
+json_t *lumila_provider_base_build_messages_google(GArray *messages);
+
+/* Build a JSON array of messages in Ollama /api/chat format:
+ * [{role:"user",content:...}, {role:"assistant",content:...}, ...]
+ * System prompt is prepended as a {role:"system"} message if non-empty.
+ * Returns a newly-allocated json_t* (caller must json_decref()). */
+json_t *lumila_provider_base_build_messages_ollama(const gchar *system_prompt,
+                                                    GArray *messages);
 
 /* --- Streaming helpers (libsoup-3.0 only) --- */
 

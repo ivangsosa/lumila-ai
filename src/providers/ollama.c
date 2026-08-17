@@ -5,11 +5,13 @@
 #include <string.h>
 #include <libsoup/soup.h>
 
-#define OLLAMA_API_BASE "http://localhost:11434/api/generate"
+#define OLLAMA_API_BASE "http://localhost:11434/api/chat"
 
-static void ollama_send_message(LumilaProvider *provider, const gchar *message,
+static void ollama_send_message(LumilaProvider *provider, const gchar *system_prompt,
+                                 GArray *messages,
                                  LumilaResponseCallback callback, gpointer user_data);
-static void ollama_send_message_stream(LumilaProvider *provider, const gchar *message,
+static void ollama_send_message_stream(LumilaProvider *provider, const gchar *system_prompt,
+                                        GArray *messages,
                                         LumilaChunkCallback chunk_cb,
                                         LumilaResponseCallback final_cb,
                                         gpointer user_data);
@@ -124,44 +126,60 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
     LumilaResponseCallback callback = provider->callback;
     gpointer cb_data = provider->user_data;
 
-    const gchar *response_text = NULL;
+    gchar *response_text = NULL;
 
-    if (SOUP_MESSAGE_STATUS_CODE(msg) == 200) {
+    if (soup_message_get_status(msg) == 200) {
         SoupBuffer *buffer = soup_message_body_flatten(SOUP_MESSAGE(msg)->response_body);
 
-        // Parse last line of NDJSON
-        const gchar *last_line = buffer->data;
-        for (gsize i = 0; i < buffer->length; i++) {
-            if (buffer->data[i] == '\n' && i + 1 < buffer->length) {
-                last_line = &buffer->data[i + 1];
+        /* /api/chat returns NDJSON with message.content chunks.
+         * Concatenate all message.content fields. */
+        GString *full = g_string_new("");
+        const gchar *start = buffer->data;
+        const gchar *end = buffer->data + buffer->length;
+        const gchar *line_start = start;
+
+        for (const gchar *p = start; p <= end; p++) {
+            if (p == end || *p == '\n') {
+                gsize line_len = p - line_start;
+                if (line_len > 0) {
+                    gchar *line = g_strndup(line_start, line_len);
+                    json_error_t error;
+                    json_t *root = json_loads(line, 0, &error);
+                    if (root) {
+                        json_t *message_obj = json_object_get(root, "message");
+                        if (message_obj) {
+                            json_t *content = json_object_get(message_obj, "content");
+                            if (content && json_is_string(content)) {
+                                g_string_append(full, json_string_value(content));
+                            }
+                        }
+                        json_decref(root);
+                    }
+                    g_free(line);
+                }
+                line_start = p + 1;
             }
         }
 
-        json_error_t error;
-        json_t *root = json_loads(last_line, 0, &error);
-
-        if (root) {
-            json_t *response_obj = json_object_get(root, "response");
-            if (response_obj && json_is_string(response_obj)) {
-                response_text = json_string_value(response_obj);
-            }
-            json_decref(root);
-        }
+        response_text = g_string_free(full, FALSE);
         soup_buffer_free(buffer);
     } else {
-        response_text = "Error: HTTP request failed (non-200 status)";
+        response_text = g_strdup("Error: HTTP request failed (non-200 status)");
     }
 
     if (callback) {
         callback(response_text, cb_data);
     }
 
+    g_free(response_text);
+
     provider->callback = NULL;
     provider->user_data = NULL;
 }
 #endif
 
-static void ollama_send_message(LumilaProvider *provider, const gchar *message,
+static void ollama_send_message(LumilaProvider *provider, const gchar *system_prompt,
+                                 GArray *messages,
                                  LumilaResponseCallback callback, gpointer user_data)
 {
     OllamaProvider *ollama = (OllamaProvider *)provider;
@@ -172,19 +190,21 @@ static void ollama_send_message(LumilaProvider *provider, const gchar *message,
     // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "llama3.3"; break;     // Llama 3.3
-        case 1: model_name = "qwen3:8b"; break;      // Qwen3 8B
-        case 2: model_name = "mistral-small:24b"; break; // Mistral Small
-        default: model_name = "llama3.3"; break;
+        case 0: model_name = "llama4"; break;                 // Llama 4 Scout
+        case 1: model_name = "qwen3.6:27b"; break;            // Qwen3.6 27B
+        case 2: model_name = "mistral-small3.1:24b"; break;   // Mistral Small 3.1 24B
+        default: model_name = "llama4"; break;
     }
     const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_OLLAMA);
     if (custom) model_name = custom;
 
-    // Build JSON request for Ollama API
+    // Build JSON request for Ollama /api/chat endpoint
     json_t *root = json_object();
     json_object_set_new(root, "model", json_string(model_name));
-    json_object_set_new(root, "prompt", json_string(message));
     json_object_set_new(root, "stream", json_false());
+
+    json_t *msgs = lumila_provider_base_build_messages_ollama(system_prompt, messages);
+    json_object_set_new(root, "messages", msgs);
 
     // Add options
     json_t *options = json_object();
@@ -225,7 +245,7 @@ static void ollama_send_message(LumilaProvider *provider, const gchar *message,
 }
 
 #if SOUP_CHECK_VERSION(3, 0, 0)
-/* Parse Ollama NDJSON streaming chunk: {"response":"...","done":false} */
+/* Parse Ollama /api/chat NDJSON streaming chunk: {"message":{"content":"..."},"done":false} */
 static gchar *ollama_parse_stream_chunk(const gchar *data, gsize len)
 {
     (void)len;
@@ -234,36 +254,42 @@ static gchar *ollama_parse_stream_chunk(const gchar *data, gsize len)
     if (!root) return NULL;
 
     gchar *result = NULL;
-    json_t *response = json_object_get(root, "response");
-    if (response && json_is_string(response)) {
-        const gchar *text = json_string_value(response);
-        if (text && *text) {
-            result = g_strdup(text);
+    json_t *message = json_object_get(root, "message");
+    if (message) {
+        json_t *content = json_object_get(message, "content");
+        if (content && json_is_string(content)) {
+            const gchar *text = json_string_value(content);
+            if (text && *text) {
+                result = g_strdup(text);
+            }
         }
     }
     json_decref(root);
     return result;
 }
 
-static void ollama_send_message_stream(LumilaProvider *provider, const gchar *message,
+static void ollama_send_message_stream(LumilaProvider *provider, const gchar *system_prompt,
+                                        GArray *messages,
                                         LumilaChunkCallback chunk_cb,
                                         LumilaResponseCallback final_cb,
                                         gpointer user_data)
 {
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "llama3.3"; break;
-        case 1: model_name = "qwen3:8b"; break;
-        case 2: model_name = "mistral-small:24b"; break;
-        default: model_name = "llama3.3"; break;
+        case 0: model_name = "llama4"; break;
+        case 1: model_name = "qwen3.6:27b"; break;
+        case 2: model_name = "mistral-small3.1:24b"; break;
+        default: model_name = "llama4"; break;
     }
     const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_OLLAMA);
     if (custom) model_name = custom;
 
     json_t *root = json_object();
     json_object_set_new(root, "model", json_string(model_name));
-    json_object_set_new(root, "prompt", json_string(message));
     json_object_set_new(root, "stream", json_true());
+
+    json_t *msgs = lumila_provider_base_build_messages_ollama(system_prompt, messages);
+    json_object_set_new(root, "messages", msgs);
 
     json_t *options = json_object();
     json_object_set_new(options, "temperature", json_real(lumila_config_get_temperature()));

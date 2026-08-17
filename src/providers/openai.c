@@ -7,9 +7,11 @@
 
 #define OPENAI_API_BASE "https://api.openai.com/v1/chat/completions"
 
-static void openai_send_message(LumilaProvider *provider, const gchar *message,
+static void openai_send_message(LumilaProvider *provider, const gchar *system_prompt,
+                                 GArray *messages,
                                  LumilaResponseCallback callback, gpointer user_data);
-static void openai_send_message_stream(LumilaProvider *provider, const gchar *message,
+static void openai_send_message_stream(LumilaProvider *provider, const gchar *system_prompt,
+                                        GArray *messages,
                                         LumilaChunkCallback chunk_cb,
                                         LumilaResponseCallback final_cb,
                                         gpointer user_data);
@@ -126,7 +128,7 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
 
     const gchar *response_text = NULL;
 
-    if (SOUP_MESSAGE_STATUS_CODE(msg) == 200) {
+    if (soup_message_get_status(msg) == 200) {
         SoupBuffer *buffer = soup_message_body_flatten(SOUP_MESSAGE(msg)->response_body);
 
         json_error_t error;
@@ -160,7 +162,8 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
 }
 #endif
 
-static void openai_send_message(LumilaProvider *provider, const gchar *message,
+static void openai_send_message(LumilaProvider *provider, const gchar *system_prompt,
+                                 GArray *messages,
                                  LumilaResponseCallback callback, gpointer user_data)
 {
     OpenAIProvider *oa = (OpenAIProvider *)provider;
@@ -182,10 +185,10 @@ static void openai_send_message(LumilaProvider *provider, const gchar *message,
     // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "gpt-4.1"; break;       // GPT-4.1
-        case 1: model_name = "gpt-4.1-mini"; break;  // GPT-4.1 mini
-        case 2: model_name = "gpt-4.1-nano"; break;  // GPT-4.1 nano
-        default: model_name = "gpt-4.1"; break;
+        case 0: model_name = "gpt-5.6-sol"; break;    // GPT-5.6 Sol
+        case 1: model_name = "gpt-5.6-terra"; break;  // GPT-5.6 Terra
+        case 2: model_name = "gpt-5.6-luna"; break;   // GPT-5.6 Luna
+        default: model_name = "gpt-5.6-sol"; break;
     }
     const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_OPENAI);
     if (custom) model_name = custom;
@@ -196,12 +199,8 @@ static void openai_send_message(LumilaProvider *provider, const gchar *message,
     json_object_set_new(root, "top_p", json_real(lumila_config_get_top_p()));
     json_object_set_new(root, "frequency_penalty", json_real(lumila_config_get_repeat_penalty() - 1.0));
 
-    json_t *messages = json_array();
-    json_t *msg_obj = json_object();
-    json_object_set_new(msg_obj, "role", json_string("user"));
-    json_object_set_new(msg_obj, "content", json_string(message));
-    json_array_append_new(messages, msg_obj);
-    json_object_set_new(root, "messages", messages);
+    json_t *msgs = lumila_provider_base_build_messages_openai(system_prompt, messages);
+    json_object_set_new(root, "messages", msgs);
 
     gchar *json_body = json_dumps(root, 0);
     json_decref(root);
@@ -242,7 +241,8 @@ static void openai_send_message(LumilaProvider *provider, const gchar *message,
 }
 
 #if SOUP_CHECK_VERSION(3, 0, 0)
-static void openai_send_message_stream(LumilaProvider *provider, const gchar *message,
+static void openai_send_message_stream(LumilaProvider *provider, const gchar *system_prompt,
+                                        GArray *messages,
                                         LumilaChunkCallback chunk_cb,
                                         LumilaResponseCallback final_cb,
                                         gpointer user_data)
@@ -258,10 +258,10 @@ static void openai_send_message_stream(LumilaProvider *provider, const gchar *me
     json_t *root = json_object();
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "gpt-4.1"; break;
-        case 1: model_name = "gpt-4.1-mini"; break;
-        case 2: model_name = "gpt-4.1-nano"; break;
-        default: model_name = "gpt-4.1"; break;
+        case 0: model_name = "gpt-5.6-sol"; break;
+        case 1: model_name = "gpt-5.6-terra"; break;
+        case 2: model_name = "gpt-5.6-luna"; break;
+        default: model_name = "gpt-5.6-sol"; break;
     }
     json_object_set_new(root, "model", json_string(model_name));
     json_object_set_new(root, "max_tokens", json_integer(lumila_config_get_max_tokens()));
@@ -270,12 +270,8 @@ static void openai_send_message_stream(LumilaProvider *provider, const gchar *me
     json_object_set_new(root, "frequency_penalty", json_real(lumila_config_get_repeat_penalty() - 1.0));
     json_object_set_new(root, "stream", json_true());
 
-    json_t *messages = json_array();
-    json_t *msg_obj = json_object();
-    json_object_set_new(msg_obj, "role", json_string("user"));
-    json_object_set_new(msg_obj, "content", json_string(message));
-    json_array_append_new(messages, msg_obj);
-    json_object_set_new(root, "messages", messages);
+    json_t *msgs = lumila_provider_base_build_messages_openai(system_prompt, messages);
+    json_object_set_new(root, "messages", msgs);
 
     gchar *json_body = json_dumps(root, 0);
     json_decref(root);

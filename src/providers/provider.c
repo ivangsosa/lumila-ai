@@ -39,22 +39,24 @@ const gchar *lumila_provider_get_name(LumilaProviderType type)
     }
 }
 
-void lumila_provider_send_message(LumilaProvider *provider, const gchar *message,
+void lumila_provider_send_message(LumilaProvider *provider, const gchar *system_prompt,
+                                   GArray *messages,
                                    LumilaResponseCallback callback, gpointer user_data)
 {
     if (provider && provider->send_message) {
-        provider->send_message(provider, message, callback, user_data);
+        provider->send_message(provider, system_prompt, messages, callback, user_data);
     }
 }
 
-void lumila_provider_send_message_stream(LumilaProvider *provider, const gchar *message,
+void lumila_provider_send_message_stream(LumilaProvider *provider, const gchar *system_prompt,
+                                          GArray *messages,
                                           LumilaChunkCallback chunk_cb,
                                           LumilaResponseCallback final_cb, gpointer user_data)
 {
     if (provider && provider->send_message_stream) {
-        provider->send_message_stream(provider, message, chunk_cb, final_cb, user_data);
+        provider->send_message_stream(provider, system_prompt, messages, chunk_cb, final_cb, user_data);
     } else if (provider && provider->send_message) {
-        provider->send_message(provider, message, final_cb, user_data);
+        provider->send_message(provider, system_prompt, messages, final_cb, user_data);
     }
 }
 

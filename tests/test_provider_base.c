@@ -69,11 +69,11 @@ static void test_parse_google_success(void)
 
 static void test_parse_ollama_success(void)
 {
-    /* Ollama NDJSON - last line is the final response */
-    const char *json = "{\"response\":\"part1\"}\n{\"response\":\"final answer\"}";
+    /* Ollama NDJSON - concatenate all "response" chunks */
+    const char *json = "{\"response\":\"part1\"}\n{\"response\":\"part2\"}\n{\"response\":\"\"}";
     gchar *result = lumila_provider_base_parse_ollama(json, strlen(json));
     assert(result != NULL);
-    assert(strcmp(result, "final answer") == 0);
+    assert(strcmp(result, "part1part2") == 0);
     g_free(result);
     printf("test_parse_ollama_success: PASS\n");
 }

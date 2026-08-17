@@ -7,13 +7,14 @@
 
 #define GOOGLE_API_BASE "https://generativelanguage.googleapis.com/v1beta/models/"
 
-static void google_send_message(LumilaProvider *provider, const gchar *message,
+static void google_send_message(LumilaProvider *provider, const gchar *system_prompt,
+                                 GArray *messages,
                                  LumilaResponseCallback callback, gpointer user_data);
-static void google_send_message_stream(LumilaProvider *provider, const gchar *message,
+static void google_send_message_stream(LumilaProvider *provider, const gchar *system_prompt,
+                                        GArray *messages,
                                         LumilaChunkCallback chunk_cb,
                                         LumilaResponseCallback final_cb,
-                                        gpointer user_data);
-static void google_cancel(LumilaProvider *provider);
+                                        gpointer user_data);static void google_cancel(LumilaProvider *provider);
 
 typedef struct {
     LumilaProvider base;
@@ -126,7 +127,7 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
 
     const gchar *response_text = NULL;
 
-    if (SOUP_MESSAGE_STATUS_CODE(msg) == 200) {
+    if (soup_message_get_status(msg) == 200) {
         SoupBuffer *buffer = soup_message_body_flatten(SOUP_MESSAGE(msg)->response_body);
 
         json_error_t error;
@@ -164,7 +165,8 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
 }
 #endif
 
-static void google_send_message(LumilaProvider *provider, const gchar *message,
+static void google_send_message(LumilaProvider *provider, const gchar *system_prompt,
+                                 GArray *messages,
                                  LumilaResponseCallback callback, gpointer user_data)
 {
     GoogleProvider *google = (GoogleProvider *)provider;
@@ -183,10 +185,10 @@ static void google_send_message(LumilaProvider *provider, const gchar *message,
     // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "gemini-2.5-flash"; break;  // Gemini 2.5 Flash
-        case 1: model_name = "gemini-2.5-pro"; break;   // Gemini 2.5 Pro
-        case 2: model_name = "gemma-4-12b-it"; break;      // Gemma 4 12B
-        default: model_name = "gemini-2.5-flash"; break;
+        case 0: model_name = "gemini-3.6-flash"; break;        // Gemini 3.6 Flash
+        case 1: model_name = "gemini-3.1-pro-preview"; break;  // Gemini 3.1 Pro Preview
+        case 2: model_name = "gemini-2.5-pro"; break;          // Gemini 2.5 Pro (GA stable)
+        default: model_name = "gemini-3.6-flash"; break;
     }
     const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_GOOGLE);
     if (custom) model_name = custom;
@@ -199,16 +201,18 @@ static void google_send_message(LumilaProvider *provider, const gchar *message,
     // Build JSON request for Gemini API
     json_t *root = json_object();
 
-    json_t *contents = json_array();
-    json_t *content_obj = json_object();
+    /* System prompt goes in systemInstruction, conversation in contents */
+    if (system_prompt && *system_prompt) {
+        json_t *sys_instruction = json_object();
+        json_t *sys_parts = json_array();
+        json_t *sys_part = json_object();
+        json_object_set_new(sys_part, "text", json_string(system_prompt));
+        json_array_append_new(sys_parts, sys_part);
+        json_object_set_new(sys_instruction, "parts", sys_parts);
+        json_object_set_new(root, "systemInstruction", sys_instruction);
+    }
 
-    json_t *parts = json_array();
-    json_t *part_obj = json_object();
-    json_object_set_new(part_obj, "text", json_string(message));
-    json_array_append_new(parts, part_obj);
-
-    json_object_set_new(content_obj, "parts", parts);
-    json_array_append_new(contents, content_obj);
+    json_t *contents = lumila_provider_base_build_messages_google(messages);
     json_object_set_new(root, "contents", contents);
 
     // Add generation config
@@ -281,7 +285,8 @@ static gchar *google_parse_stream_chunk(const gchar *data, gsize len)
     return result;
 }
 
-static void google_send_message_stream(LumilaProvider *provider, const gchar *message,
+static void google_send_message_stream(LumilaProvider *provider, const gchar *system_prompt,
+                                        GArray *messages,
                                         LumilaChunkCallback chunk_cb,
                                         LumilaResponseCallback final_cb,
                                         gpointer user_data)
@@ -296,10 +301,10 @@ static void google_send_message_stream(LumilaProvider *provider, const gchar *me
 
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "gemini-2.5-flash"; break;
-        case 1: model_name = "gemini-2.5-pro"; break;
-        case 2: model_name = "gemma-4-12b-it"; break;
-        default: model_name = "gemini-2.5-flash"; break;
+        case 0: model_name = "gemini-3.6-flash"; break;
+        case 1: model_name = "gemini-3.1-pro-preview"; break;
+        case 2: model_name = "gemini-2.5-pro"; break;
+        default: model_name = "gemini-3.6-flash"; break;
     }
     const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_GOOGLE);
     if (custom) model_name = custom;
@@ -310,14 +315,19 @@ static void google_send_message_stream(LumilaProvider *provider, const gchar *me
     gchar *url = g_strdup_printf("%s%s:streamGenerateContent?alt=sse", base, model_name);
 
     json_t *root = json_object();
-    json_t *contents = json_array();
-    json_t *content_obj = json_object();
-    json_t *parts = json_array();
-    json_t *part_obj = json_object();
-    json_object_set_new(part_obj, "text", json_string(message));
-    json_array_append_new(parts, part_obj);
-    json_object_set_new(content_obj, "parts", parts);
-    json_array_append_new(contents, content_obj);
+
+    /* System prompt goes in systemInstruction, conversation in contents */
+    if (system_prompt && *system_prompt) {
+        json_t *sys_instruction = json_object();
+        json_t *sys_parts = json_array();
+        json_t *sys_part = json_object();
+        json_object_set_new(sys_part, "text", json_string(system_prompt));
+        json_array_append_new(sys_parts, sys_part);
+        json_object_set_new(sys_instruction, "parts", sys_parts);
+        json_object_set_new(root, "systemInstruction", sys_instruction);
+    }
+
+    json_t *contents = lumila_provider_base_build_messages_google(messages);
     json_object_set_new(root, "contents", contents);
 
     json_t *gen_config = json_object();

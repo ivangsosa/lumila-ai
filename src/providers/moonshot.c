@@ -5,11 +5,13 @@
 #include <string.h>
 #include <libsoup/soup.h>
 
-#define MOONSHOT_API_BASE "https://api.moonshot.cn/v1/chat/completions"
+#define MOONSHOT_API_BASE "https://api.moonshot.ai/v1/chat/completions"
 
-static void moonshot_send_message(LumilaProvider *provider, const gchar *message,
+static void moonshot_send_message(LumilaProvider *provider, const gchar *system_prompt,
+                               GArray *messages,
                                LumilaResponseCallback callback, gpointer user_data);
-static void moonshot_send_message_stream(LumilaProvider *provider, const gchar *message,
+static void moonshot_send_message_stream(LumilaProvider *provider, const gchar *system_prompt,
+                                      GArray *messages,
                                       LumilaChunkCallback chunk_cb,
                                       LumilaResponseCallback final_cb,
                                       gpointer user_data);
@@ -126,7 +128,7 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
 
     const gchar *response_text = NULL;
 
-    if (SOUP_MESSAGE_STATUS_CODE(msg) == 200) {
+    if (soup_message_get_status(msg) == 200) {
         SoupBuffer *buffer = soup_message_body_flatten(SOUP_MESSAGE(msg)->response_body);
 
         json_error_t error;
@@ -160,7 +162,8 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
 }
 #endif
 
-static void moonshot_send_message(LumilaProvider *provider, const gchar *message,
+static void moonshot_send_message(LumilaProvider *provider, const gchar *system_prompt,
+                               GArray *messages,
                                LumilaResponseCallback callback, gpointer user_data)
 {
     MoonshotProvider *kp = (MoonshotProvider *)provider;
@@ -182,8 +185,8 @@ static void moonshot_send_message(LumilaProvider *provider, const gchar *message
     // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "kimi-k2-6"; break;
-        default: model_name = "kimi-k2-6"; break;
+        case 0: model_name = "kimi-k3"; break;
+        default: model_name = "kimi-k3"; break;
     }
     const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_MOONSHOT);
     if (custom) model_name = custom;
@@ -194,12 +197,8 @@ static void moonshot_send_message(LumilaProvider *provider, const gchar *message
     json_object_set_new(root, "top_p", json_real(lumila_config_get_top_p()));
     json_object_set_new(root, "frequency_penalty", json_real(lumila_config_get_repeat_penalty() - 1.0));
 
-    json_t *messages = json_array();
-    json_t *msg_obj = json_object();
-    json_object_set_new(msg_obj, "role", json_string("user"));
-    json_object_set_new(msg_obj, "content", json_string(message));
-    json_array_append_new(messages, msg_obj);
-    json_object_set_new(root, "messages", messages);
+    json_t *msgs = lumila_provider_base_build_messages_openai(system_prompt, messages);
+    json_object_set_new(root, "messages", msgs);
 
     gchar *json_body = json_dumps(root, 0);
     json_decref(root);
@@ -240,7 +239,8 @@ static void moonshot_send_message(LumilaProvider *provider, const gchar *message
 }
 
 #if SOUP_CHECK_VERSION(3, 0, 0)
-static void moonshot_send_message_stream(LumilaProvider *provider, const gchar *message,
+static void moonshot_send_message_stream(LumilaProvider *provider, const gchar *system_prompt,
+                                      GArray *messages,
                                       LumilaChunkCallback chunk_cb,
                                       LumilaResponseCallback final_cb,
                                       gpointer user_data)
@@ -256,8 +256,8 @@ static void moonshot_send_message_stream(LumilaProvider *provider, const gchar *
     json_t *root = json_object();
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "kimi-k2-6"; break;
-        default: model_name = "kimi-k2-6"; break;
+        case 0: model_name = "kimi-k3"; break;
+        default: model_name = "kimi-k3"; break;
     }
     json_object_set_new(root, "model", json_string(model_name));
     json_object_set_new(root, "max_tokens", json_integer(lumila_config_get_max_tokens()));
@@ -266,12 +266,8 @@ static void moonshot_send_message_stream(LumilaProvider *provider, const gchar *
     json_object_set_new(root, "frequency_penalty", json_real(lumila_config_get_repeat_penalty() - 1.0));
     json_object_set_new(root, "stream", json_true());
 
-    json_t *messages = json_array();
-    json_t *msg_obj = json_object();
-    json_object_set_new(msg_obj, "role", json_string("user"));
-    json_object_set_new(msg_obj, "content", json_string(message));
-    json_array_append_new(messages, msg_obj);
-    json_object_set_new(root, "messages", messages);
+    json_t *msgs = lumila_provider_base_build_messages_openai(system_prompt, messages);
+    json_object_set_new(root, "messages", msgs);
 
     gchar *json_body = json_dumps(root, 0);
     json_decref(root);

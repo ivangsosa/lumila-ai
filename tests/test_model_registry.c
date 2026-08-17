@@ -56,18 +56,42 @@ static void test_registry_helpers(void)
 static void test_known_models(void)
 {
     /* Spot-check a few known entries to catch regressions */
-    assert(strcmp(lumila_model_registry_get_display_name(0), "Claude Sonnet 4") == 0);
+    assert(strcmp(lumila_model_registry_get_display_name(0), "Claude Sonnet 5") == 0);
     assert(lumila_model_registry_get_type(0) == LUMILA_PROVIDER_ANTHROPIC);
+    assert(strcmp(lumila_model_registry_get_model_name(0), "claude-sonnet-5") == 0);
+
+    assert(strcmp(lumila_model_registry_get_display_name(1), "Claude Opus 5") == 0);
+    assert(lumila_model_registry_get_type(1) == LUMILA_PROVIDER_ANTHROPIC);
+
+    assert(strcmp(lumila_model_registry_get_display_name(2), "Claude Haiku 4.5") == 0);
+    assert(lumila_model_registry_get_type(2) == LUMILA_PROVIDER_ANTHROPIC);
+
+    assert(strcmp(lumila_model_registry_get_display_name(3), "GPT-5.6 Sol") == 0);
+    assert(lumila_model_registry_get_type(3) == LUMILA_PROVIDER_OPENAI);
+    assert(strcmp(lumila_model_registry_get_model_name(3), "gpt-5.6-sol") == 0);
 
     assert(strcmp(lumila_model_registry_get_display_name(9), "OpenRouter Auto") == 0);
     assert(lumila_model_registry_get_type(9) == LUMILA_PROVIDER_OPENROUTER);
+    assert(strcmp(lumila_model_registry_get_model_name(9), "openrouter/auto") == 0);
 
-    assert(strcmp(lumila_model_registry_get_display_name(10), "DeepSeek V3") == 0);
+    assert(strcmp(lumila_model_registry_get_display_name(10), "DeepSeek V4 Flash") == 0);
     assert(lumila_model_registry_get_type(10) == LUMILA_PROVIDER_DEEPSEEK);
+    assert(strcmp(lumila_model_registry_get_model_name(10), "deepseek-v4-flash") == 0);
 
-    /* Verify the bug fix: ID 8 is Ollama Qwen3, NOT OpenRouter */
-    assert(strcmp(lumila_model_registry_get_display_name(8), "Ollama Qwen3") == 0);
-    assert(lumila_model_registry_get_type(8) == LUMILA_PROVIDER_OLLAMA);
+    /* Verify ID 8 is Gemini 2.5 Pro (Google), not Ollama */
+    assert(strcmp(lumila_model_registry_get_display_name(8), "Gemini 2.5 Pro") == 0);
+    assert(lumila_model_registry_get_type(8) == LUMILA_PROVIDER_GOOGLE);
+
+    /* Verify ID 17 is Moonshot Kimi K3 (was kimi-k2-6, broken) */
+    assert(strcmp(lumila_model_registry_get_display_name(17), "Moonshot Kimi K3") == 0);
+    assert(lumila_model_registry_get_type(17) == LUMILA_PROVIDER_MOONSHOT);
+    assert(strcmp(lumila_model_registry_get_model_name(17), "kimi-k3") == 0);
+
+    /* Verify ID 21 is OpenRouter Llama 3.3 Free (was openrouter/free, broken) */
+    assert(strcmp(lumila_model_registry_get_display_name(21), "OpenRouter Llama 3.3 Free") == 0);
+    assert(lumila_model_registry_get_type(21) == LUMILA_PROVIDER_OPENROUTER);
+    assert(strcmp(lumila_model_registry_get_model_name(21),
+                   "meta-llama/llama-3.3-70b-instruct:free") == 0);
 
     printf("test_known_models: PASS\n");
 }

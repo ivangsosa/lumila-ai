@@ -7,13 +7,15 @@
 
 #define MISTRAL_API_BASE "https://api.mistral.ai/v1/chat/completions"
 
-static void mistral_send_message(LumilaProvider *provider, const gchar *message,
-                                  LumilaResponseCallback callback, gpointer user_data);
+static void mistral_send_message(LumilaProvider *provider, const gchar *system_prompt,
+                                 GArray *messages,
+                                 LumilaResponseCallback callback, gpointer user_data);
 #if SOUP_CHECK_VERSION(3, 0, 0)
-static void mistral_send_message_stream(LumilaProvider *provider, const gchar *message,
-                                         LumilaChunkCallback chunk_cb,
-                                         LumilaResponseCallback final_cb,
-                                         gpointer user_data);
+static void mistral_send_message_stream(LumilaProvider *provider, const gchar *system_prompt,
+                                        GArray *messages,
+                                        LumilaChunkCallback chunk_cb,
+                                        LumilaResponseCallback final_cb,
+                                        gpointer user_data);
 #endif
 static void mistral_cancel(LumilaProvider *provider);
 
@@ -128,7 +130,7 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
 
     const gchar *response_text = NULL;
 
-    if (SOUP_MESSAGE_STATUS_CODE(msg) == 200) {
+    if (soup_message_get_status(msg) == 200) {
         SoupBuffer *buffer = soup_message_body_flatten(SOUP_MESSAGE(msg)->response_body);
 
         json_error_t error;
@@ -162,8 +164,9 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
 }
 #endif
 
-static void mistral_send_message(LumilaProvider *provider, const gchar *message,
-                                  LumilaResponseCallback callback, gpointer user_data)
+static void mistral_send_message(LumilaProvider *provider, const gchar *system_prompt,
+                                 GArray *messages,
+                                 LumilaResponseCallback callback, gpointer user_data)
 {
     MistralProvider *m = (MistralProvider *)provider;
 
@@ -184,8 +187,8 @@ static void mistral_send_message(LumilaProvider *provider, const gchar *message,
     // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "mistral-large-latest"; break;     // Mistral Large
-        case 1: model_name = "mistral-small-3.1-latest"; break; // Mistral Small 3.1
+        case 0: model_name = "mistral-large-latest"; break;  // Mistral Large 3
+        case 1: model_name = "mistral-small-latest"; break;  // Mistral Small 4
         default: model_name = "mistral-large-latest"; break;
     }
     const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_MISTRAL);
@@ -197,12 +200,8 @@ static void mistral_send_message(LumilaProvider *provider, const gchar *message,
     json_object_set_new(root, "top_p", json_real(lumila_config_get_top_p()));
     json_object_set_new(root, "frequency_penalty", json_real(lumila_config_get_repeat_penalty() - 1.0));
 
-    json_t *messages = json_array();
-    json_t *msg_obj = json_object();
-    json_object_set_new(msg_obj, "role", json_string("user"));
-    json_object_set_new(msg_obj, "content", json_string(message));
-    json_array_append_new(messages, msg_obj);
-    json_object_set_new(root, "messages", messages);
+    json_t *msgs = lumila_provider_base_build_messages_openai(system_prompt, messages);
+    json_object_set_new(root, "messages", msgs);
 
     gchar *json_body = json_dumps(root, 0);
     json_decref(root);
@@ -241,10 +240,11 @@ static void mistral_send_message(LumilaProvider *provider, const gchar *message,
 }
 
 #if SOUP_CHECK_VERSION(3, 0, 0)
-static void mistral_send_message_stream(LumilaProvider *provider, const gchar *message,
-                                         LumilaChunkCallback chunk_cb,
-                                         LumilaResponseCallback final_cb,
-                                         gpointer user_data)
+static void mistral_send_message_stream(LumilaProvider *provider, const gchar *system_prompt,
+                                        GArray *messages,
+                                        LumilaChunkCallback chunk_cb,
+                                        LumilaResponseCallback final_cb,
+                                        gpointer user_data)
 {
     const gchar *api_key = lumila_config_get_api_key(LUMILA_PROVIDER_MISTRAL);
     if (!api_key || !*api_key) {
@@ -258,7 +258,7 @@ static void mistral_send_message_stream(LumilaProvider *provider, const gchar *m
     const gchar *model_name;
     switch (provider->model_id) {
         case 0: model_name = "mistral-large-latest"; break;
-        case 1: model_name = "mistral-small-3.1-latest"; break;
+        case 1: model_name = "mistral-small-latest"; break;
         default: model_name = "mistral-large-latest"; break;
     }
     json_object_set_new(root, "model", json_string(model_name));
@@ -268,12 +268,8 @@ static void mistral_send_message_stream(LumilaProvider *provider, const gchar *m
     json_object_set_new(root, "frequency_penalty", json_real(lumila_config_get_repeat_penalty() - 1.0));
     json_object_set_new(root, "stream", json_true());
 
-    json_t *messages = json_array();
-    json_t *msg_obj = json_object();
-    json_object_set_new(msg_obj, "role", json_string("user"));
-    json_object_set_new(msg_obj, "content", json_string(message));
-    json_array_append_new(messages, msg_obj);
-    json_object_set_new(root, "messages", messages);
+    json_t *msgs = lumila_provider_base_build_messages_openai(system_prompt, messages);
+    json_object_set_new(root, "messages", msgs);
 
     gchar *json_body = json_dumps(root, 0);
     json_decref(root);

@@ -8,9 +8,11 @@
 #define ANTHROPIC_API_BASE "https://api.anthropic.com/v1/messages"
 #define ANTHROPIC_VERSION "2023-06-01"
 
-static void anthropic_send_message(LumilaProvider *provider, const gchar *message,
+static void anthropic_send_message(LumilaProvider *provider, const gchar *system_prompt,
+                                    GArray *messages,
                                     LumilaResponseCallback callback, gpointer user_data);
-static void anthropic_send_message_stream(LumilaProvider *provider, const gchar *message,
+static void anthropic_send_message_stream(LumilaProvider *provider, const gchar *system_prompt,
+                                           GArray *messages,
                                            LumilaChunkCallback chunk_cb,
                                            LumilaResponseCallback final_cb,
                                            gpointer user_data);
@@ -127,7 +129,7 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
 
     const gchar *response_text = NULL;
 
-    if (SOUP_MESSAGE_STATUS_CODE(msg) == 200) {
+    if (soup_message_get_status(msg) == 200) {
         SoupBuffer *buffer = soup_message_body_flatten(SOUP_MESSAGE(msg)->response_body);
 
         json_error_t error;
@@ -158,7 +160,8 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
 }
 #endif
 
-static void anthropic_send_message(LumilaProvider *provider, const gchar *message,
+static void anthropic_send_message(LumilaProvider *provider, const gchar *system_prompt,
+                                    GArray *messages,
                                     LumilaResponseCallback callback, gpointer user_data)
 {
     AnthropicProvider *ant = (AnthropicProvider *)provider;
@@ -180,9 +183,10 @@ static void anthropic_send_message(LumilaProvider *provider, const gchar *messag
     // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "claude-sonnet-4-20250514"; break;  // Claude Sonnet 4
-        case 1: model_name = "claude-opus-4-20250514"; break;     // Claude Opus 4
-        default: model_name = "claude-sonnet-4-20250514"; break;
+        case 0: model_name = "claude-sonnet-5"; break;   // Claude Sonnet 5
+        case 1: model_name = "claude-opus-5"; break;     // Claude Opus 5
+        case 2: model_name = "claude-haiku-4-5"; break;  // Claude Haiku 4.5
+        default: model_name = "claude-sonnet-5"; break;
     }
     const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_ANTHROPIC);
     if (custom) model_name = custom;
@@ -192,12 +196,12 @@ static void anthropic_send_message(LumilaProvider *provider, const gchar *messag
     json_object_set_new(root, "temperature", json_real(lumila_config_get_temperature()));
     json_object_set_new(root, "top_p", json_real(lumila_config_get_top_p()));
 
-    json_t *messages = json_array();
-    json_t *msg_obj = json_object();
-    json_object_set_new(msg_obj, "role", json_string("user"));
-    json_object_set_new(msg_obj, "content", json_string(message));
-    json_array_append_new(messages, msg_obj);
-    json_object_set_new(root, "messages", messages);
+    /* Anthropic uses a top-level "system" field, not a system role in messages */
+    if (system_prompt && *system_prompt) {
+        json_object_set_new(root, "system", json_string(system_prompt));
+    }
+    json_t *msgs = lumila_provider_base_build_messages_anthropic(messages);
+    json_object_set_new(root, "messages", msgs);
 
     gchar *json_body = json_dumps(root, 0);
     json_decref(root);
@@ -259,7 +263,8 @@ static gchar *anthropic_parse_stream_chunk(const gchar *data, gsize len)
     return result;
 }
 
-static void anthropic_send_message_stream(LumilaProvider *provider, const gchar *message,
+static void anthropic_send_message_stream(LumilaProvider *provider, const gchar *system_prompt,
+                                           GArray *messages,
                                            LumilaChunkCallback chunk_cb,
                                            LumilaResponseCallback final_cb,
                                            gpointer user_data)
@@ -275,9 +280,10 @@ static void anthropic_send_message_stream(LumilaProvider *provider, const gchar 
     json_t *root = json_object();
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "claude-sonnet-4-20250514"; break;
-        case 1: model_name = "claude-opus-4-20250514"; break;
-        default: model_name = "claude-sonnet-4-20250514"; break;
+        case 0: model_name = "claude-sonnet-5"; break;
+        case 1: model_name = "claude-opus-5"; break;
+        case 2: model_name = "claude-haiku-4-5"; break;
+        default: model_name = "claude-sonnet-5"; break;
     }
     const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_ANTHROPIC);
     if (custom) model_name = custom;
@@ -288,12 +294,12 @@ static void anthropic_send_message_stream(LumilaProvider *provider, const gchar 
     json_object_set_new(root, "top_p", json_real(lumila_config_get_top_p()));
     json_object_set_new(root, "stream", json_true());
 
-    json_t *messages = json_array();
-    json_t *msg_obj = json_object();
-    json_object_set_new(msg_obj, "role", json_string("user"));
-    json_object_set_new(msg_obj, "content", json_string(message));
-    json_array_append_new(messages, msg_obj);
-    json_object_set_new(root, "messages", messages);
+    /* Anthropic uses a top-level "system" field, not a system role in messages */
+    if (system_prompt && *system_prompt) {
+        json_object_set_new(root, "system", json_string(system_prompt));
+    }
+    json_t *msgs = lumila_provider_base_build_messages_anthropic(messages);
+    json_object_set_new(root, "messages", msgs);
 
     gchar *json_body = json_dumps(root, 0);
     json_decref(root);

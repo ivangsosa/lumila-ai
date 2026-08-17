@@ -1,4 +1,4 @@
-# Lumila AI - Plugin para Geany v0.9.3
+# Lumila AI - Plugin para Geany v0.10.0
 
 AI Assistant plugin for Geany editor with multi-provider support, persistent history, and real-time streaming.
 
@@ -39,32 +39,32 @@ AI Assistant plugin for Geany editor with multi-provider support, persistent his
   - Focus automático al input después de enviar/cancelar
 - **Configuraciones avanzadas**: temperatura, max_tokens, top_p, repeat_penalty
 
-## Modelos soportados (2025-2026)
+## Modelos soportados (2026)
 
-| # | Modelo                 | Proveedor   | Tipo          |
-|---|------------------------|-------------|---------------|
-| 0 | Claude Sonnet 4        | Anthropic   | Pago          |
-| 1 | Claude Opus 4          | Anthropic   | Pago          |
-| 2 | GPT-4.1                | OpenAI      | Pago          |
-| 3 | GPT-4.1 mini           | OpenAI      | Pago          |
-| 4 | Gemini 2.5 Flash       | Google      | Pago          |
-| 5 | Gemini 2.5 Pro         | Google      | Pago          |
-| 6 | Gemma 4 12B            | Google      | Pago          |
-| 7 | Ollama Llama 3.3       | Ollama      | Local/Gratis  |
-| 8 | Ollama Qwen3           | Ollama      | Local/Gratis  |
-| 9 | OpenRouter Auto        | OpenRouter  | Gratis        |
-| 10 | DeepSeek V3           | DeepSeek    | Pago          |
-| 11 | DeepSeek R1           | DeepSeek    | Pago          |
-| 12 | Mistral Large         | Mistral     | Pago          |
-| 13 | Ollama Mistral Small  | Ollama      | Local/Gratis  |
-| 14 | OpenRouter Free       | OpenRouter  | Gratis        |
-| 15 | Moonshot Kimi K2.6    | Moonshot    | Pago          |
-| 16 | MAI-Code-1            | OpenRouter  | Pago          |
-| 17 | GPT-4.1 nano          | OpenAI      | Pago          |
-| 18 | Mistral Small 3.1     | Mistral     | Pago          |
-| 19 | OpenRouter GLM-4      | OpenRouter  | Pago          |
-| 20 | OpenRouter Grok 3     | OpenRouter  | Pago          |
-| 21 | OpenRouter Qwen3-235B | OpenRouter  | Pago          |
+| # | Modelo                       | Proveedor   | Tipo          |
+|---|------------------------------|-------------|---------------|
+| 0 | Claude Sonnet 5              | Anthropic   | Pago          |
+| 1 | Claude Opus 5                | Anthropic   | Pago          |
+| 2 | Claude Haiku 4.5             | Anthropic   | Pago          |
+| 3 | GPT-5.6 Sol                  | OpenAI      | Pago          |
+| 4 | GPT-5.6 Terra                | OpenAI      | Pago          |
+| 5 | GPT-5.6 Luna                 | OpenAI      | Pago          |
+| 6 | Gemini 3.6 Flash             | Google      | Pago          |
+| 7 | Gemini 3.1 Pro Preview       | Google      | Pago          |
+| 8 | Gemini 2.5 Pro               | Google      | Pago          |
+| 9 | OpenRouter Auto              | OpenRouter  | Gratis        |
+| 10 | DeepSeek V4 Flash           | DeepSeek    | Pago          |
+| 11 | DeepSeek V4 Pro             | DeepSeek    | Pago          |
+| 12 | Mistral Large 3             | Mistral     | Pago          |
+| 13 | Mistral Small 4             | Mistral     | Pago          |
+| 14 | Ollama Llama 4 Scout        | Ollama      | Local/Gratis  |
+| 15 | Ollama Qwen3.6 27B          | Ollama      | Local/Gratis  |
+| 16 | Ollama Mistral Small 3.1    | Ollama      | Local/Gratis  |
+| 17 | Moonshot Kimi K3            | Moonshot    | Pago          |
+| 18 | OpenRouter GLM-4.6          | OpenRouter  | Pago          |
+| 19 | OpenRouter Grok 4           | OpenRouter  | Pago          |
+| 20 | OpenRouter Qwen3.5 Plus     | OpenRouter  | Pago          |
+| 21 | OpenRouter Llama 3.3 Free   | OpenRouter  | Gratis        |
 
 ## Dependencies
 
@@ -112,7 +112,7 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
 
 ```json
 {
-  "version": "0.9.3",
+  "version": "0.10.0",
   "api_keys": {
     "openai": "",
     "anthropic": "",
@@ -328,6 +328,7 @@ Dejá vacío (`""`) para usar el modelo por defecto del provider.
 - [ ] **Modo Plan**: la IA genera un plan paso a paso antes de ejecutar cambios, permitiendo al usuario aprobar, mejorar o rechazar cada paso individualmente
 - [ ] **Previsualización diff inline**: mostrar cambios propuestos como anotaciones de Scintilla (verde/rojo) con botones *Apply* / *Discard* antes de modificar el archivo
 - [ ] **Estimación de tokens**: mostrar en la UI cuántos tokens aprox. consume el contexto actual (chars/4) y alertar al acercarse al límite del modelo
+- [ ] **Analizar posibles configuraciones**: GPT 5.6: `model_reasoning_effort`, `model_verbosity`, `personality`. Ej.: "medium", "low", "pragmatic"
 
 ### Avanzadas (diferenciadoras, mayor esfuerzo)
 

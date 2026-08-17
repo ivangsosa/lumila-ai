@@ -8,13 +8,15 @@
 
 #define OPENROUTER_API_BASE "https://openrouter.ai/api/v1/chat/completions"
 
-static void openrouter_send_message(LumilaProvider *provider, const gchar *message,
-                                     LumilaResponseCallback callback, gpointer user_data);
+static void openrouter_send_message(LumilaProvider *provider, const gchar *system_prompt,
+                                    GArray *messages,
+                                    LumilaResponseCallback callback, gpointer user_data);
 #if SOUP_CHECK_VERSION(3, 0, 0)
-static void openrouter_send_message_stream(LumilaProvider *provider, const gchar *message,
-                                            LumilaChunkCallback chunk_cb,
-                                            LumilaResponseCallback final_cb,
-                                            gpointer user_data);
+static void openrouter_send_message_stream(LumilaProvider *provider, const gchar *system_prompt,
+                                           GArray *messages,
+                                           LumilaChunkCallback chunk_cb,
+                                           LumilaResponseCallback final_cb,
+                                           gpointer user_data);
 #endif
 static void openrouter_cancel(LumilaProvider *provider);
 
@@ -129,7 +131,7 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
 
     const gchar *response_text = NULL;
 
-    if (SOUP_MESSAGE_STATUS_CODE(msg) == 200) {
+    if (soup_message_get_status(msg) == 200) {
         SoupBuffer *buffer = soup_message_body_flatten(SOUP_MESSAGE(msg)->response_body);
 
         json_error_t error;
@@ -163,8 +165,9 @@ static void on_message_sent(SoupSession *session, SoupMessage *msg, gpointer use
 }
 #endif
 
-static void openrouter_send_message(LumilaProvider *provider, const gchar *message,
-                                     LumilaResponseCallback callback, gpointer user_data)
+static void openrouter_send_message(LumilaProvider *provider, const gchar *system_prompt,
+                                    GArray *messages,
+                                    LumilaResponseCallback callback, gpointer user_data)
 {
     OpenRouterProvider *openrouter = (OpenRouterProvider *)provider;
 
@@ -185,12 +188,11 @@ static void openrouter_send_message(LumilaProvider *provider, const gchar *messa
     // Select model based on model_id
     const gchar *model_name;
     switch (provider->model_id) {
-        case 0: model_name = "openrouter/auto"; break;
-        case 1: model_name = "openrouter/free"; break;
-        case 2: model_name = "microsoft/mai-code-1"; break;           // MAI-Code-1
-        case 3: model_name = "thudm/glm-4"; break;                     // GLM-4
-        case 4: model_name = "x-ai/grok-3"; break;                     // Grok 3
-        case 5: model_name = "qwen/qwen3-235b-a22b"; break;            // Qwen3-235B
+        case 0: model_name = "openrouter/auto"; break;                              // OpenRouter Auto
+        case 1: model_name = "z-ai/glm-4.6"; break;                                 // GLM-4.6
+        case 2: model_name = "x-ai/grok-4"; break;                                  // Grok 4
+        case 3: model_name = "qwen/qwen3.5-plus-20260420"; break;                   // Qwen3.5 Plus
+        case 4: model_name = "meta-llama/llama-3.3-70b-instruct:free"; break;       // Llama 3.3 70B Free
         default: model_name = "openrouter/auto"; break;
     }
     const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_OPENROUTER);
@@ -202,12 +204,8 @@ static void openrouter_send_message(LumilaProvider *provider, const gchar *messa
     json_object_set_new(root, "top_p", json_real(lumila_config_get_top_p()));
     json_object_set_new(root, "frequency_penalty", json_real(lumila_config_get_repeat_penalty() - 1.0));
 
-    json_t *messages = json_array();
-    json_t *msg_obj = json_object();
-    json_object_set_new(msg_obj, "role", json_string("user"));
-    json_object_set_new(msg_obj, "content", json_string(message));
-    json_array_append_new(messages, msg_obj);
-    json_object_set_new(root, "messages", messages);
+    json_t *msgs = lumila_provider_base_build_messages_openai(system_prompt, messages);
+    json_object_set_new(root, "messages", msgs);
 
     gchar *json_body = json_dumps(root, 0);
     json_decref(root);
@@ -256,10 +254,11 @@ static void openrouter_send_message(LumilaProvider *provider, const gchar *messa
 }
 
 #if SOUP_CHECK_VERSION(3, 0, 0)
-static void openrouter_send_message_stream(LumilaProvider *provider, const gchar *message,
-                                            LumilaChunkCallback chunk_cb,
-                                            LumilaResponseCallback final_cb,
-                                            gpointer user_data)
+static void openrouter_send_message_stream(LumilaProvider *provider, const gchar *system_prompt,
+                                           GArray *messages,
+                                           LumilaChunkCallback chunk_cb,
+                                           LumilaResponseCallback final_cb,
+                                           gpointer user_data)
 {
     const gchar *api_key = lumila_config_get_api_key(LUMILA_PROVIDER_OPENROUTER);
     if (!api_key || !*api_key) {
@@ -273,11 +272,10 @@ static void openrouter_send_message_stream(LumilaProvider *provider, const gchar
     const gchar *model_name;
     switch (provider->model_id) {
         case 0: model_name = "openrouter/auto"; break;
-        case 1: model_name = "openrouter/free"; break;
-        case 2: model_name = "microsoft/mai-code-1"; break;
-        case 3: model_name = "thudm/glm-4"; break;
-        case 4: model_name = "x-ai/grok-3"; break;
-        case 5: model_name = "qwen/qwen3-235b-a22b"; break;
+        case 1: model_name = "z-ai/glm-4.6"; break;
+        case 2: model_name = "x-ai/grok-4"; break;
+        case 3: model_name = "qwen/qwen3.5-plus-20260420"; break;
+        case 4: model_name = "meta-llama/llama-3.3-70b-instruct:free"; break;
         default: model_name = "openrouter/auto"; break;
     }
     json_object_set_new(root, "model", json_string(model_name));
@@ -287,12 +285,8 @@ static void openrouter_send_message_stream(LumilaProvider *provider, const gchar
     json_object_set_new(root, "frequency_penalty", json_real(lumila_config_get_repeat_penalty() - 1.0));
     json_object_set_new(root, "stream", json_true());
 
-    json_t *messages = json_array();
-    json_t *msg_obj = json_object();
-    json_object_set_new(msg_obj, "role", json_string("user"));
-    json_object_set_new(msg_obj, "content", json_string(message));
-    json_array_append_new(messages, msg_obj);
-    json_object_set_new(root, "messages", messages);
+    json_t *msgs = lumila_provider_base_build_messages_openai(system_prompt, messages);
+    json_object_set_new(root, "messages", msgs);
 
     gchar *json_body = json_dumps(root, 0);
     json_decref(root);

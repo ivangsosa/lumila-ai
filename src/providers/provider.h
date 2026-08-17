@@ -3,6 +3,7 @@
 
 #include <glib.h>
 #include <libsoup/soup.h>
+#include "../message.h"
 
 typedef enum {
     LUMILA_PROVIDER_OPENAI = 0,
@@ -27,9 +28,11 @@ struct _LumilaProvider {
     GCancellable *cancellable;
     SoupMessage *pending_msg;  /* Used for HTTP status check in async callbacks */
 
-    void (*send_message)(LumilaProvider *provider, const gchar *message,
+    void (*send_message)(LumilaProvider *provider, const gchar *system_prompt,
+                         GArray *messages,
                          LumilaResponseCallback callback, gpointer user_data);
-    void (*send_message_stream)(LumilaProvider *provider, const gchar *message,
+    void (*send_message_stream)(LumilaProvider *provider, const gchar *system_prompt,
+                                 GArray *messages,
                                  LumilaChunkCallback chunk_cb,
                                  LumilaResponseCallback final_cb,
                                  gpointer user_data);
@@ -38,9 +41,11 @@ struct _LumilaProvider {
 
 LumilaProvider *lumila_provider_create(LumilaProviderType type);
 void lumila_provider_free(LumilaProvider *provider);
-void lumila_provider_send_message(LumilaProvider *provider, const gchar *message,
+void lumila_provider_send_message(LumilaProvider *provider, const gchar *system_prompt,
+                                   GArray *messages,
                                    LumilaResponseCallback callback, gpointer user_data);
-void lumila_provider_send_message_stream(LumilaProvider *provider, const gchar *message,
+void lumila_provider_send_message_stream(LumilaProvider *provider, const gchar *system_prompt,
+                                          GArray *messages,
                                           LumilaChunkCallback chunk_cb,
                                           LumilaResponseCallback final_cb, gpointer user_data);
 void lumila_provider_cancel(LumilaProvider *provider);

@@ -191,15 +191,39 @@ static gchar *get_open_files_context(void)
     GString *context = g_string_new("");
     GeanyDocument *doc;
     gint i = 0;
+    /* Budget de caracteres para no exceder context window.
+     * Priorizamos el archivo activo primero, luego el resto. */
+    const gsize MAX_CONTEXT_CHARS = 8000;
+    gsize remaining = MAX_CONTEXT_CHARS;
 
-    while ((doc = document_index(i)) != NULL) {
+    /* Primero el archivo activo */
+    GeanyDocument *active = document_get_current();
+    if (active && active->file_name && active->editor && active->editor->sci) {
+        gchar *filename = g_path_get_basename(active->file_name);
+        const gchar *content = sci_get_contents(active->editor->sci, -1);
+        if (content && *content) {
+            gsize len = strlen(content);
+            if (len > remaining) len = remaining;
+            g_string_append_printf(context, "\n\n[Archivo activo: %s]\n```\n%.*s\n```\n",
+                                   filename, (gint)len, content);
+            remaining -= len;
+        }
+        g_free(filename);
+    }
+
+    /* Luego el resto de archivos abiertos */
+    while ((doc = document_index(i)) != NULL && remaining > 0) {
+        if (doc == active) { i++; continue; }
         if (doc->file_name && doc->editor && doc->editor->sci) {
             gchar *filename = g_path_get_basename(doc->file_name);
             const gchar *content = sci_get_contents(doc->editor->sci, -1);
 
             if (content && *content) {
-                g_string_append_printf(context, "\n\n[Archivo abierto: %s]\n```\n%s\n```\n",
-                                       filename, content);
+                gsize len = strlen(content);
+                if (len > remaining) len = remaining;
+                g_string_append_printf(context, "\n\n[Archivo abierto: %s]\n```\n%.*s\n```\n",
+                                       filename, (gint)len, content);
+                remaining -= len;
             }
 
             g_free(filename);
@@ -334,44 +358,6 @@ void lumila_chat_cancel_request(void)
 
     lumila_sidebar_set_status(NULL);
     lumila_sidebar_set_input_sensitive(TRUE);
-}
-
-static gchar *build_history_context(void)
-{
-    if (!messages || messages->len == 0) return g_strdup("");
-
-    GString *history = g_string_new("");
-
-    /* Context window management: keep only the most recent messages.
-     * Use a char-based budget (~4 chars per token) to avoid exceeding
-     * model context limits. Default budget: ~24k chars (~6k tokens).
-     * Also cap at the last 20 messages to prevent unbounded growth. */
-    const guint max_messages = 20;
-    const gsize max_chars = 24000;
-    guint start = 0;
-    if (messages->len - 1 > max_messages) {
-        start = messages->len - 1 - max_messages;
-    }
-
-    /* Do not include the very last message (the one being sent now) */
-    for (guint i = start; i < messages->len - 1; i++) {
-        LumilaMessage *msg = &g_array_index(messages, LumilaMessage, i);
-        GString *entry = g_string_new("");
-        if (g_str_equal(msg->role, "user")) {
-            g_string_append_printf(entry, "User: %s\n", msg->content);
-        } else {
-            g_string_append_printf(entry, "Assistant: %s\n", msg->content);
-        }
-        /* If adding this entry would exceed the budget, skip older messages */
-        if (history->len + entry->len > max_chars && history->len > 0) {
-            g_string_free(entry, TRUE);
-            break;
-        }
-        g_string_append_len(history, entry->str, entry->len);
-        g_string_free(entry, TRUE);
-    }
-
-    return g_string_free(history, FALSE);
 }
 
 static gchar *get_current_file_content(void)
@@ -560,30 +546,36 @@ void lumila_chat_send_message(const gchar *message)
     // Get context from open files
     gchar *files_context = get_open_files_context();
 
-    // Build conversation history context
-    gchar *history = build_history_context();
-
-    // Build complete message with system prompt, history, file context, references and processed message
-    gchar *complete_message;
-    gchar *sys_prompt = build_system_prompt();
-
-    GString *parts = g_string_new(sys_prompt);
-    if (history && *history) {
-        g_string_append_printf(parts, "%s\n", history);
-    }
+    // Build system prompt: base prompt + file context + references
+    gchar *base_prompt = build_system_prompt();
+    GString *sys_parts = g_string_new(base_prompt);
     if (files_context && *files_context) {
-        g_string_append_printf(parts, "%s\n", files_context);
+        g_string_append_printf(sys_parts, "\n%s", files_context);
     }
     if (refs && *refs) {
-        g_string_append_printf(parts, "%s\n", refs);
+        g_string_append_printf(sys_parts, "\n%s", refs);
     }
-    g_string_append(parts, processed);
+    gchar *system_prompt = g_string_free(sys_parts, FALSE);
 
-    complete_message = g_string_free(parts, FALSE);
-
-    g_free(sys_prompt);
-    g_free(processed);
-    g_free(refs);
+    /* Build messages array for multi-turn conversation.
+     * Copy conversation history, replacing the last user message content
+     * with the processed version (slash commands resolved). */
+    GArray *messages_to_send = g_array_new(FALSE, FALSE, sizeof(LumilaMessage));
+    for (guint i = 0; i < messages->len; i++) {
+        LumilaMessage *m = &g_array_index(messages, LumilaMessage, i);
+        LumilaMessage copy;
+        if (i == messages->len - 1 && g_str_equal(m->role, "user")) {
+            /* Last user message: use processed content */
+            copy.role = g_strdup(m->role);
+            copy.content = g_strdup(processed);
+            copy.timestamp = g_strdup(m->timestamp);
+        } else {
+            copy.role = g_strdup(m->role);
+            copy.content = g_strdup(m->content);
+            copy.timestamp = g_strdup(m->timestamp);
+        }
+        g_array_append_val(messages_to_send, copy);
+    }
 
     // Send to provider
     if (current_provider) {
@@ -591,16 +583,29 @@ void lumila_chat_send_message(const gchar *message)
         lumila_sidebar_set_input_sensitive(FALSE);
         if (current_provider->send_message_stream) {
             lumila_chat_ui_stream_start(chat_view);
-            lumila_provider_send_message_stream(current_provider, complete_message,
+            lumila_provider_send_message_stream(current_provider, system_prompt,
+                                                   messages_to_send,
                                                    on_stream_chunk, on_stream_final, NULL);
         } else {
-            lumila_provider_send_message(current_provider, complete_message, on_response_received, NULL);
+            lumila_provider_send_message(current_provider, system_prompt,
+                                          messages_to_send, on_response_received, NULL);
         }
     }
 
-    g_free(complete_message);
+    // Free temporary messages array (provider already consumed it synchronously)
+    for (guint i = 0; i < messages_to_send->len; i++) {
+        LumilaMessage *m = &g_array_index(messages_to_send, LumilaMessage, i);
+        g_free(m->role);
+        g_free(m->content);
+        g_free(m->timestamp);
+    }
+    g_array_free(messages_to_send, TRUE);
+
+    g_free(system_prompt);
+    g_free(base_prompt);
+    g_free(processed);
+    g_free(refs);
     g_free(files_context);
-    g_free(history);
 }
 
 void lumila_chat_send_selection(void)
