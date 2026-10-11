@@ -1,4 +1,4 @@
-# Lumila AI - Plugin para Geany v0.10.0
+# Lumila AI - Plugin para Geany v0.11.0
 
 AI Assistant plugin for Geany editor with multi-provider support, persistent history, and real-time streaming.
 
@@ -11,10 +11,20 @@ AI Assistant plugin for Geany editor with multi-provider support, persistent his
   - **Bloques de código separados** con fondo oscuro (`#16162a`), márgenes y separación visual
   - **Syntax highlighting inteligente** con detección automática de lenguaje (20+ lenguajes soportados)
 - **Edición de archivos por IA**: la IA puede modificar archivos abiertos directamente
-  - Usa el formato ` ```file:nombre.ext ` para editar
-  - Crea archivos nuevos si no existen
+  - Usa el formato ` ```file:nombre.ext ` para editar (soporta rutas como `src/foo.c` y contenido con fences anidados)
+  - Crea archivos nuevos si no existen (con filetype detectado por extensión)
+  - **Confirmación antes de aplicar** (Apply/Discard, desactivable con `confirm_edits`)
+  - Preserva el historial de undo del editor
   - Resumen de cambios en el chat
 - **Streaming de respuestas** (todos los providers con libsoup-3.0): texto en tiempo real
+  - Errores HTTP (401/429/5xx) visibles con el mensaje real de la API
+  - Cancelar con **Esc** conserva el texto parcial y deja el provider listo para reenviar
+  - **Retry automático con backoff** en errores transitorios (429/5xx; desactivable con `auto_retry`)
+- **Modo Plan**: la IA genera un plan antes de editar; **Execute Plan** lo aplica
+- **Contador de tokens**: estimación (chars/4) durante el envío; uso real cuando el provider lo reporta
+- **Botón Copy** en cada bloque de código del chat
+- **Modelos declarados en `config.json`** (`models[]`): agregá modelos al combo sin recompilar
+- **Keybindings asignables**: *Lumila: Send selection to AI* y *Lumila: Send current file to AI* en Preferencias → Combinaciones de teclas
 - **Slash commands** rápidos: `/explain`, `/refactor`, `/test`, `/doc`, `/fix`, `/commit`, `/review`
 - **Send Selection**: envía el texto seleccionado en el editor como contexto
 - **Send Current File**: envía el archivo activo completo como contexto
@@ -39,24 +49,24 @@ AI Assistant plugin for Geany editor with multi-provider support, persistent his
   - Focus automático al input después de enviar/cancelar
 - **Configuraciones avanzadas**: temperatura, max_tokens, top_p, repeat_penalty
 
-## Modelos soportados (2026)
+## Modelos soportados (Oct-2026)
 
 | # | Modelo                       | Proveedor   | Tipo          |
 |---|------------------------------|-------------|---------------|
-| 0 | Claude Sonnet 5              | Anthropic   | Pago          |
-| 1 | Claude Opus 5                | Anthropic   | Pago          |
-| 2 | Claude Haiku 4.5             | Anthropic   | Pago          |
-| 3 | GPT-5.6 Sol                  | OpenAI      | Pago          |
-| 4 | GPT-5.6 Terra                | OpenAI      | Pago          |
-| 5 | GPT-5.6 Luna                 | OpenAI      | Pago          |
-| 6 | Gemini 3.6 Flash             | Google      | Pago          |
+| 0 | Claude Sonnet 5.5            | Anthropic   | Pago          |
+| 1 | Claude Opus 5.5              | Anthropic   | Pago          |
+| 2 | Claude Haiku 5.5             | Anthropic   | Pago          |
+| 3 | GPT-6.1 Sol                  | OpenAI      | Pago          |
+| 4 | GPT-6 Astra                  | OpenAI      | Pago          |
+| 5 | GPT-6 Luna                   | OpenAI      | Pago          |
+| 6 | Gemini 3.8 Flash             | Google      | Pago          |
 | 7 | Gemini 3.1 Pro Preview       | Google      | Pago          |
-| 8 | Gemini 2.5 Pro               | Google      | Pago          |
+| 8 | Gemini 3.6 Flash             | Google      | Pago          |
 | 9 | OpenRouter Auto              | OpenRouter  | Gratis        |
-| 10 | DeepSeek V4 Flash           | DeepSeek    | Pago          |
+| 10 | DeepSeek V4.1 Flash         | DeepSeek    | Pago          |
 | 11 | DeepSeek V4 Pro             | DeepSeek    | Pago          |
-| 12 | Mistral Large 3             | Mistral     | Pago          |
-| 13 | Mistral Small 4             | Mistral     | Pago          |
+| 12 | Mistral Large 4 (preview)   | Mistral     | Pago          |
+| 13 | Mistral Small               | Mistral     | Pago          |
 | 14 | Ollama Llama 4 Scout        | Ollama      | Local/Gratis  |
 | 15 | Ollama Qwen3.6 27B          | Ollama      | Local/Gratis  |
 | 16 | Ollama Mistral Small 3.1    | Ollama      | Local/Gratis  |
@@ -65,6 +75,11 @@ AI Assistant plugin for Geany editor with multi-provider support, persistent his
 | 19 | OpenRouter Grok 4           | OpenRouter  | Pago          |
 | 20 | OpenRouter Qwen3.5 Plus     | OpenRouter  | Pago          |
 | 21 | OpenRouter Llama 3.3 Free   | OpenRouter  | Gratis        |
+
+Cada modelo lleva flags de capacidad que ajustan el request automáticamente:
+los modelos con razonamiento no envían `temperature`/`top_p`, los GPT-6 usan
+`max_completion_tokens` + `reasoning_effort`, los Claude 5.5 usan
+`output_config.effort` y los Gemini 3.x usan `thinkingConfig.thinkingLevel`.
 
 ## Dependencies
 
@@ -112,7 +127,7 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
 
 ```json
 {
-  "version": "0.10.0",
+  "version": "0.11.0",
   "api_keys": {
     "openai": "",
     "anthropic": "",
@@ -125,10 +140,19 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
   },
   "defaults": {
     "temperature": 0.3,
-    "max_tokens": 2048,
+    "max_tokens": 8192,
     "top_p": 0.9,
     "repeat_penalty": 1.1,
-    "default_provider_id": 9
+    "default_provider_id": 9,
+    "default_model": "",
+    "ask_mode": false,
+    "plan_mode": false,
+    "confirm_edits": true,
+    "auto_retry": true,
+    "context_max_chars": 20000,
+    "history_max_messages": 40,
+    "reasoning_effort": "medium",
+    "thinking_level": "medium"
   },
   "custom_models": {
     "openai": "",
@@ -151,41 +175,44 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
     "mistral": ""
   },
   "timeouts": {
-    "openai": 60,
-    "anthropic": 60,
-    "google": 60,
-    "moonshot": 60,
-    "openrouter": 60,
+    "openai": 180,
+    "anthropic": 180,
+    "google": 180,
+    "moonshot": 180,
+    "openrouter": 180,
     "ollama": 120,
-    "deepseek": 60,
-    "mistral": 60
-  }
+    "deepseek": 180,
+    "mistral": 180
+  },
+  "models": [
+    {
+      "name": "Mi modelo local",
+      "provider": "ollama",
+      "model": "my-model:latest",
+      "flags": []
+    }
+  ]
 }
 ```
 
 ### Parámetros
 
-- **temperature**: aleatoriedad (0.0 - 2.0, default 0.3)
-- **max_tokens**: máximo de tokens (100 - 8000, default 2048)
-- **top_p**: muestreo nucleus (0.0 - 1.0, default 0.9)
+- **temperature**: aleatoriedad (0.0 - 2.0, default 0.3). Se omite automáticamente en modelos que no lo soportan
+- **max_tokens**: máximo de tokens de salida (default 8192 — los modelos con razonamiento gastan parte del presupuesto en *thinking*)
+- **top_p**: muestreo nucleus (0.0 - 1.0, default 0.9). Omitido cuando el modelo no lo soporta
 - **repeat_penalty**: penalización de repetición (default 1.1)
-- **default_provider_id**: modelo por defecto (0-21, default 9 = OpenRouter Auto)
+- **default_provider_id**: modelo por defecto por índice (legacy; default 9 = OpenRouter Auto)
+- **default_model**: modelo por defecto por nombre de API (ej. `"claude-sonnet-5-5"`). Tiene prioridad sobre `default_provider_id`
+- **ask_mode** / **plan_mode**: modo persistido al iniciar
+- **confirm_edits**: pide confirmación antes de aplicar bloques ` ```file: ` (default true)
+- **auto_retry**: reintenta errores transitorios 429/5xx/529 con backoff 1/2/4 s (default true)
+- **context_max_chars**: presupuesto de caracteres para el contexto de archivos abiertos (default 20000)
+- **history_max_messages**: máximo de mensajes de historial enviados por request (default 40, 0 = sin límite)
+- **reasoning_effort**: `"low"|"medium"|"high"|"xhigh"|"max"` para GPT-6 y Claude 5.5 (default `"medium"`)
+- **thinking_level**: `"low"|"medium"|"high"` para Gemini 3.x (default `"medium"`)
 - **endpoints**: sobrescribe la URL base de cada provider (vacío = usar default). Útil para proxies o instancias self-hosted de Ollama
-- **timeouts**: timeout en segundos por provider (default 60s, Ollama 120s)
-
-### Configuraciones sugeridas por modelo
-
-| Escenario | `temperature` | `max_tokens` | `top_p` | `repeat_penalty` | `default_provider_id` |
-|---|---|---|---|---|---|
-| **DeepSeek V3** (rápido, barato, bueno para código) | 0.3 | 2048 | 0.9 | 1.1 | 10 |
-| **DeepSeek R1** (raciocinio profundo) | 0.2 | 4096 | 0.95 | 1.1 | 11 |
-| **Ollama Qwen3:8b** (local, ligero) | 0.5 | 2048 | 0.9 | 1.05 | 8 |
-| **OpenRouter Auto** (gratis, enrutamiento automático) | 0.3 | 2048 | 0.9 | 1.1 | 9 |
-| **Genérica** (Claude, GPT-4.1, Gemini) | 0.3 | 2048 | 0.9 | 1.1 | según modelo |
-
-- `temperature` baja (0.2-0.3) = respuestas más directas y reproducibles, ideal para código
-- `temperature` media (0.5) = equilibrada, útil para modelos locales que tienden a repetirse
-- `max_tokens` 2048 = suficiente para respuestas con código; subir a 4096 solo si necesitás respuestas muy largas
+- **timeouts**: timeout en segundos por provider (default 180s, Ollama 120s — los modelos con razonamiento pueden tardar antes del primer token)
+- **models**: lista de modelos extra que aparecen en el combo. Cada entrada: `{"name": ..., "provider": ..., "model": ..., "flags": [...]}` con flags opcionales `no_sampling`, `max_completion_tokens`, `reasoning_effort`, `anthropic_effort`, `thinking_level`
 
 ### API Keys
 
@@ -226,8 +253,8 @@ Escribí un comando rápido en el input para transformar tu mensaje. Los comando
 - `/refactor` — Refactoriza para mejorar legibilidad
 - `/test` — Genera tests unitarios
 - `/doc` — Genera documentación
-- `/fix` — Encuentra y corrige bugs en el archivo activo
-- `/commit` — Genera un mensaje de commit convencional desde `git diff`
+- `/fix` — Encuentra y corrige bugs en el archivo activo; si puede, adjunta la salida real del compilador/linter (gcc/g++/python/node/bash/php)
+- `/commit` — Genera un mensaje de commit convencional desde `git diff` (ejecutado en el directorio del proyecto)
 - `/review` — Revisa el archivo activo buscando bugs, seguridad y performance
 
 Ejemplo: `/explain esta función`
@@ -242,20 +269,21 @@ Presioná **Send File** para enviar el contenido completo del archivo activo com
 
 ### @referencias en el chat
 
-Incluí cualquier archivo del proyecto escribiendo `@nombre.ext` en el input del chat. El plugin busca el archivo en el directorio del documento actual o en la ruta absoluta, lo lee y lo incluye automáticamente como contexto:
+Incluí cualquier archivo del proyecto escribiendo `@nombre.ext` en el input del chat. El plugin busca el archivo relativo al directorio del proyecto Geany, luego del documento activo, y también acepta rutas absolutas y `~/...`:
 
 ```
 Revisá @utils.c y decime si hay memory leaks
 ```
 
-Funciona con rutas relativas (`@src/main.c`) o nombres de archivo simples (`@main.c`).
+Funciona con rutas relativas (`@src/main.c`) o nombres de archivo simples (`@main.c`). Los archivos binarios se ignoran y hay un límite de ~20 KB por archivo. Por seguridad, rutas sensibles (`~/.ssh`, `~/.gnupg`, `.env`, etc.) se omiten con un aviso — nunca se envían al proveedor.
 
-### Modo Ask
+### Modos Ask y Plan
 
-Activá el toggle **Ask** en la barra de botones para entrar en modo consulta. En este modo:
-- La IA responde **sin modificar archivos** (ignora bloques ` ```file: `)
-- Ideal para explicaciones, brainstorming o preguntas rápidas sin riesgo de que toque tu código
-- Desactivá el toggle para volver al modo normal con edición de archivos habilitada
+El botón de modo (abajo a la izquierda) ofrece tres estados que persisten entre sesiones:
+
+- **Code** (default): la IA puede responder y editar archivos con ` ```file: `
+- **Ask**: responde **sin modificar archivos** — ideal para consultas rápidas sin riesgo
+- **Plan**: la IA genera un plan paso a paso *sin* tocar archivos; cuando el plan te convenga, usá **... → Execute Plan** para implementarlo (las ediciones pasan por la confirmación normal)
 
 ### Syntax Highlighting
 
@@ -301,8 +329,12 @@ int main() { return 0; }
 ```
 
 El plugin detecta estos bloques y:
-- Si el archivo está abierto: **reemplaza su contenido**
-- Si no existe: **crea un nuevo archivo**
+- Si `confirm_edits` está activo: **muestra un diálogo Apply/Discard** con la lista de archivos y líneas afectadas
+- Si el archivo está abierto: **reemplaza su contenido** (preservando undo)
+- Si existe en disco pero no está abierto: lo abre y reemplaza
+- Si no existe: **crea un nuevo archivo** con el filetype correcto
+
+Los bloques ` ```file: ` soportan rutas (`src/foo.c`) y contenido que contiene otros code fences (el parser rastrea la profundidad).
 
 ### Modelos custom
 
@@ -321,14 +353,11 @@ Dejá vacío (`""`) para usar el modelo por defecto del provider.
 
 ### Medias (requieren trabajo adicional)
 
-- [ ] **Error-aware / fix build**: capturar la salida de la ventana *Messages* de Geany para que `/fix` envíe error + archivo + línea al modelo
 - [ ] **Contexto multi-archivo automático**: al enviar un mensaje, incluir automáticamente el archivo activo + archivos recientes + archivos del proyecto (`*.geany`)
-- [ ] **Menú contextual en el editor**: integrar acciones al menú derecho de Geany — *Explain this*, *Refactor selection*, *Generate docstring*, *Add type hints*
+- [ ] **Menú contextual en el editor**: integrar acciones al menú derecho de Geany — *Explain this*, *Refactor selection*, *Generate docstring*, *Add type hints* (los keybindings de v0.11 cubren parte de esto)
 - [ ] **Ejecución de comandos**: detectar bloques ` ```bash ` y mostrar botón *Run* que ejecute el comando en el directorio del proyecto (`g_spawn_async`)
-- [ ] **Modo Plan**: la IA genera un plan paso a paso antes de ejecutar cambios, permitiendo al usuario aprobar, mejorar o rechazar cada paso individualmente
 - [ ] **Previsualización diff inline**: mostrar cambios propuestos como anotaciones de Scintilla (verde/rojo) con botones *Apply* / *Discard* antes de modificar el archivo
-- [ ] **Estimación de tokens**: mostrar en la UI cuántos tokens aprox. consume el contexto actual (chars/4) y alertar al acercarse al límite del modelo
-- [ ] **Analizar posibles configuraciones**: GPT 5.6: `model_reasoning_effort`, `model_verbosity`, `personality`. Ej.: "medium", "low", "pragmatic"
+- [ ] **Refresh dinámico de modelos**: poblar el combo desde `/v1/models` (OpenAI-compatibles) y `/api/tags` (Ollama)
 
 ### Avanzadas (diferenciadoras, mayor esfuerzo)
 
@@ -336,7 +365,6 @@ Dejá vacío (`""`) para usar el modelo por defecto del provider.
 - [ ] **Modo Agent / Composer**: la IA puede leer múltiples archivos, proponer cambios, pedir confirmación y aplicarlos en pasos iterativos
 - [ ] **Contexto LSP**: integrar con `geany-lsp` para capturar diagnostics (errores de tipo, lint) y enviarlos como contexto
 - [ ] **Autocompletado con IA**: sugerencias inline mientras se escribe (estilo Copilot) vía hooks de Scintilla (`char-added` + ghost text)
-- [ ] **Retry automático con backoff**: reenviar automáticamente requests en 429/5xx con backoff exponencial (actualmente sólo muestra mensaje de retry manual)
 
 ### Infraestructura
 

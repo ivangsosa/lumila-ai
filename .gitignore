@@ -37,5 +37,4 @@ Thumbs.db
 # Test binaries
 tests/test_model_registry
 tests/test_provider_base
-tests/test
-tests/test_provider
+tests/test_utils

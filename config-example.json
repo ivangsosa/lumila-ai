@@ -1,5 +1,5 @@
 {
-  "version": "0.10.0",
+  "version": "0.11.0",
   "api_keys": {
     "openai": "",
     "anthropic": "",
@@ -12,10 +12,19 @@
   },
   "defaults": {
     "temperature": 0.3,
-    "max_tokens": 2048,
+    "max_tokens": 8192,
     "top_p": 0.9,
     "repeat_penalty": 1.1,
-    "default_provider_id": 9
+    "default_provider_id": 9,
+    "default_model": "",
+    "ask_mode": false,
+    "plan_mode": false,
+    "confirm_edits": true,
+    "auto_retry": true,
+    "context_max_chars": 20000,
+    "history_max_messages": 40,
+    "reasoning_effort": "medium",
+    "thinking_level": "medium"
   },
   "custom_models": {
     "openai": "",
@@ -38,13 +47,27 @@
     "mistral": ""
   },
   "timeouts": {
-    "openai": 60,
-    "anthropic": 60,
-    "google": 60,
-    "moonshot": 60,
-    "openrouter": 60,
+    "openai": 180,
+    "anthropic": 180,
+    "google": 180,
+    "moonshot": 180,
+    "openrouter": 180,
     "ollama": 120,
-    "deepseek": 60,
-    "mistral": 60
-  }
+    "deepseek": 180,
+    "mistral": 180
+  },
+  "models": [
+    {
+      "name": "My Local Model",
+      "provider": "ollama",
+      "model": "my-model:latest",
+      "flags": []
+    },
+    {
+      "name": "GPT-6 with reasoning",
+      "provider": "openai",
+      "model": "gpt-6-sol",
+      "flags": ["no_sampling", "max_completion_tokens", "reasoning_effort"]
+    }
+  ]
 }
