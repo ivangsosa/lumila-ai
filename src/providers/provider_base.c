@@ -337,28 +337,94 @@ static void lumila_stream_state_finish(LumilaStreamState *state,
     lumila_stream_state_free(state);
 }
 
+/* Update the token-usage accumulators from a parsed stream event.
+ * Shapes covered: OpenAI-compat usage.total_tokens (+input/output),
+ * Anthropic usage.{input,output}_tokens (message_start/message_delta),
+ * Google usageMetadata.totalTokenCount, Ollama prompt_eval_count /
+ * eval_count. */
+static void lumila_stream_state_note_usage(LumilaStreamState *state, json_t *root)
+{
+    if (!state->usage_out || !root) return;
+
+    json_t *usage = json_object_get(root, "usage");
+    if (usage && json_is_object(usage)) {
+        json_t *t = json_object_get(usage, "total_tokens");
+        if (t && json_is_integer(t)) {
+            state->usage_total = json_integer_value(t);
+        }
+        t = json_object_get(usage, "input_tokens");
+        if (t && json_is_integer(t)) {
+            state->usage_in = json_integer_value(t);
+        }
+        t = json_object_get(usage, "output_tokens");
+        if (t && json_is_integer(t)) {
+            state->usage_out_tok = json_integer_value(t);
+        }
+        /* OpenAI streams split prompt/completion too. */
+        t = json_object_get(usage, "prompt_tokens");
+        if (t && json_is_integer(t)) {
+            state->usage_in = json_integer_value(t);
+        }
+        t = json_object_get(usage, "completion_tokens");
+        if (t && json_is_integer(t)) {
+            state->usage_out_tok = json_integer_value(t);
+        }
+    }
+    json_t *um = json_object_get(root, "usageMetadata");
+    if (um && json_is_object(um)) {
+        json_t *t = json_object_get(um, "totalTokenCount");
+        if (t && json_is_integer(t)) {
+            state->usage_total = json_integer_value(t);
+        }
+    }
+    /* Ollama NDJSON final object. */
+    json_t *t = json_object_get(root, "prompt_eval_count");
+    if (t && json_is_integer(t)) {
+        state->usage_in = json_integer_value(t);
+    }
+    t = json_object_get(root, "eval_count");
+    if (t && json_is_integer(t)) {
+        state->usage_out_tok = json_integer_value(t);
+    }
+}
+
 static void lumila_stream_state_emit_final(LumilaStreamState *state)
 {
+    if (state->usage_out) {
+        gint64 total = state->usage_total;
+        if (total < 0 && (state->usage_in >= 0 || state->usage_out_tok >= 0)) {
+            total = MAX(state->usage_in, 0) + MAX(state->usage_out_tok, 0);
+        }
+        *state->usage_out = total;
+    }
+
     gchar *full = NULL;
     if (state->error_text) {
         full = g_strdup(state->error_text);
     } else if (state->http_status != 0 &&
                !SOUP_STATUS_IS_SUCCESSFUL(state->http_status)) {
-        /* HTTP error body was accumulated raw in stream_buffer. */
+        /* HTTP error body was accumulated raw in stream_buffer. The
+         * "Transient " prefix marks retriable statuses for auto-retry. */
+        const gchar *prefix =
+            lumila_provider_base_is_retriable_status(state->http_status)
+                ? "Transient " : "";
         const gchar *body = state->stream_buffer ? state->stream_buffer->str : NULL;
         const gchar *reason = soup_status_get_phrase(state->http_status);
         if (body && *body) {
             gchar *err_msg = lumila_provider_base_extract_error_message(body, strlen(body));
             if (err_msg) {
-                full = g_strdup_printf("HTTP Error %u: %s", state->http_status, err_msg);
+                full = g_strdup_printf("%sHTTP Error %u: %s", prefix,
+                                       state->http_status, err_msg);
                 g_free(err_msg);
             } else {
                 gchar *trunc = g_strndup(body, 300);
-                full = g_strdup_printf("HTTP Error %u: %s", state->http_status, trunc);
+                full = g_strdup_printf("%sHTTP Error %u: %s", prefix,
+                                       state->http_status, trunc);
                 g_free(trunc);
             }
         } else {
-            full = g_strdup_printf("HTTP Error %u: %s", state->http_status, reason);
+            full = g_strdup_printf("%sHTTP Error %u: %s", prefix,
+                                   state->http_status, reason);
         }
     } else if (state->stream_buffer) {
         full = g_strdup(state->stream_buffer->str);
@@ -468,6 +534,7 @@ static void lumila_provider_base_read_stream_line(GDataInputStream *data_stream,
         json_error_t jerr;
         json_t *root = json_loads(data, 0, &jerr);
         if (root) {
+            lumila_stream_state_note_usage(state, root);
             /* Mid-stream API errors arrive as a normal "data:" event with
              * an error payload: Anthropic {"type":"error",...},
              * OpenAI-compatible {"error":{...}}. Record it and keep
@@ -527,7 +594,16 @@ static void lumila_provider_base_read_stream_line(GDataInputStream *data_stream,
             g_free(text);
         }
     } else if (state->parse_chunk) {
-        /* Provider-specific chunk parser (e.g. Ollama NDJSON without "data: " prefix) */
+        /* Provider-specific chunk parser (e.g. Ollama NDJSON without
+         * "data: " prefix). Also scan the raw line for usage fields. */
+        if (state->usage_out) {
+            json_error_t uerr;
+            json_t *uroot = json_loads(line, 0, &uerr);
+            if (uroot) {
+                lumila_stream_state_note_usage(state, uroot);
+                json_decref(uroot);
+            }
+        }
         gchar *text = state->parse_chunk(line, len);
         if (text && *text) {
             if (!state->stream_buffer)
@@ -559,6 +635,10 @@ LumilaStreamState *lumila_stream_state_new(GCancellable *cancellable,
     state->user_data = user_data;
     state->stream_buffer = g_string_new("");
     state->parse_chunk = NULL;
+    state->usage_out = NULL;
+    state->usage_in = -1;
+    state->usage_out_tok = -1;
+    state->usage_total = -1;
     return state;
 }
 

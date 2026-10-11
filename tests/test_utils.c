@@ -107,6 +107,9 @@ static void test_error_classification(void)
 
     assert(lumila_utils_is_transient_response("Transient HTTP Error 429"));
     assert(lumila_utils_is_transient_response("Error: Connection timed out"));
+    assert(lumila_utils_is_transient_response("API Error: overloaded_error: Overloaded"));
+    assert(lumila_utils_is_transient_response("API Error: rate limit exceeded"));
+    assert(!lumila_utils_is_transient_response("API Error: invalid api key"));
     assert(!lumila_utils_is_transient_response("HTTP Error 401: Unauthorized"));
     assert(!lumila_utils_is_transient_response("Normal answer"));
     printf("test_error_classification: PASS\n");

@@ -12,6 +12,38 @@ static gchar *config_dir = NULL;
 static gchar *config_file = NULL;
 static json_t *config_root = NULL;
 static json_t *api_keys_obj = NULL;
+static gint64 config_mtime = 0;
+
+static void update_config_mtime(void)
+{
+    struct stat st;
+    config_mtime = (config_file && g_stat(config_file, &st) == 0)
+        ? (gint64) st.st_mtime : 0;
+}
+
+/* If config.json changed on disk since our last read/write (e.g. the
+ * user edited it by hand), reload before mutating so a manual edit is
+ * not silently overwritten by a setter. */
+static void reload_config_if_changed(void)
+{
+    if (!config_file || !config_root) return;
+    struct stat st;
+    if (g_stat(config_file, &st) != 0 || (gint64) st.st_mtime == config_mtime) {
+        return;
+    }
+    json_error_t error;
+    json_t *root = json_load_file(config_file, 0, &error);
+    config_mtime = (gint64) st.st_mtime;
+    if (!root) return; /* keep in-memory config if the file is unparseable */
+
+    json_decref(config_root);
+    config_root = root;
+    api_keys_obj = json_object_get(root, "api_keys");
+    if (!api_keys_obj) {
+        api_keys_obj = json_object();
+        json_object_set_new(root, "api_keys", api_keys_obj);
+    }
+}
 
 static json_t *get_defaults(void)
 {
@@ -70,6 +102,7 @@ static json_t *ensure_defaults(void)
 
 static void set_defaults_bool(const gchar *key, gboolean value)
 {
+    reload_config_if_changed();
     json_t *defaults = ensure_defaults();
     if (defaults) {
         json_object_set_new(defaults, key, json_boolean(value));
@@ -79,6 +112,7 @@ static void set_defaults_bool(const gchar *key, gboolean value)
 
 static void set_defaults_string(const gchar *key, const gchar *value)
 {
+    reload_config_if_changed();
     json_t *defaults = ensure_defaults();
     if (defaults) {
         json_object_set_new(defaults, key, json_string(value ? value : ""));
@@ -144,6 +178,7 @@ void lumila_config_init(void)
         api_keys_obj = json_object();
         json_object_set_new(root, "api_keys", api_keys_obj);
     }
+    update_config_mtime();
 }
 
 gboolean lumila_config_save(void)
@@ -167,6 +202,7 @@ gboolean lumila_config_save(void)
         return FALSE;
     }
     g_free(tmp);
+    update_config_mtime();
     return TRUE;
 }
 
@@ -201,6 +237,7 @@ const gchar *lumila_config_get_api_key(LumilaProviderType provider)
 void lumila_config_set_api_key(LumilaProviderType provider, const gchar *key)
 {
     if (!api_keys_obj) return;
+    reload_config_if_changed();
 
     const gchar *key_name = lumila_provider_get_key_name(provider);
     json_object_set_new(api_keys_obj, key_name, json_string(key ? key : ""));

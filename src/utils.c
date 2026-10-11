@@ -128,5 +128,13 @@ gboolean lumila_utils_is_transient_response(const gchar *text)
          strstr(text, "temporarily") || strstr(text, "Connection"))) {
         return TRUE;
     }
+    /* API-level transient failures (e.g. Anthropic "overloaded_error"
+     * mid-stream, rate limits reported in the body). */
+    if (g_str_has_prefix(text, "API Error:") &&
+        (strstr(text, "overloaded") || strstr(text, "rate limit") ||
+         strstr(text, "rate_limit") || strstr(text, "temporarily") ||
+         strstr(text, "capacity"))) {
+        return TRUE;
+    }
     return FALSE;
 }

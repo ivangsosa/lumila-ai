@@ -23,7 +23,10 @@ static void on_send_clicked(GtkButton *button, gpointer user_data)
     (void)button;
     (void)user_data;
 
-    if (is_streaming) {
+    /* Check the chat-level flag too: during the retry wait the sidebar
+     * flag is on but a stale state here would clear the user's input
+     * without sending anything. */
+    if (is_streaming || lumila_chat_is_streaming()) {
         return;
     }
 
@@ -277,6 +280,7 @@ void lumila_sidebar_init(void)
     item_execute_plan = gtk_menu_item_new_with_label("Execute Plan");
     gtk_widget_set_tooltip_text(item_execute_plan,
         "Implement the plan produced in Plan mode");
+    gtk_widget_set_sensitive(item_execute_plan, FALSE);
     g_signal_connect(item_execute_plan, "activate",
                      G_CALLBACK(on_execute_plan_clicked), NULL);
     gtk_menu_shell_append(GTK_MENU_SHELL(more_menu), item_execute_plan);

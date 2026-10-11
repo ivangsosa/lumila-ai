@@ -298,6 +298,7 @@ static void anthropic_send_message_stream(LumilaProvider *provider, const gchar 
     LumilaStreamState *state = lumila_stream_state_new(provider->cancellable,
                                                         chunk_cb, final_cb, user_data);
     state->parse_chunk = anthropic_parse_stream_chunk;
+    state->usage_out = &provider->last_usage;
     lumila_provider_base_stream_start(provider->session, msg, state);
 }
 #endif

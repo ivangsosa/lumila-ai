@@ -121,7 +121,7 @@ static gboolean retry_request_cb(gpointer data)
 static void schedule_retry(void)
 {
     if (!pending_retry) return;
-    guint secs = 1u << (pending_retry->attempts - 1); /* 1, 2, 4 s */
+    guint secs = 1u << pending_retry->attempts; /* 1, 2, 4 s */
     gchar *st = g_strdup_printf(_("Transient error. Retrying in %us..."), secs);
     lumila_sidebar_set_status(st);
     g_free(st);
@@ -176,6 +176,7 @@ static gboolean stream_idle_callback(gpointer user_data)
                    pending_retry->attempts < RETRY_MAX_ATTEMPTS &&
                    pending_retry->request_id == data->request_id) {
             lumila_chat_ui_stream_end(chat_view);
+            is_streaming = TRUE; /* keep the "one request" guard during the wait */
             schedule_retry();
             lumila_sidebar_set_input_sensitive(FALSE);
             stream_idle_data_free(data);
@@ -231,26 +232,26 @@ static gboolean stream_idle_callback(gpointer user_data)
 
 static void on_stream_chunk(const gchar *chunk, gboolean is_final, gpointer user_data)
 {
-    (void)user_data;
     (void)is_final;
 
     if (!chunk || !*chunk || shutting_down) return;
 
+    /* user_data carries the request id captured when the request was
+     * dispatched — reading the global request_seq here would wrongly
+     * match a newer request sent after a cancel. */
     StreamIdleData *data = g_new0(StreamIdleData, 1);
     data->chunk = g_strdup(chunk);
     data->is_final = FALSE;
-    data->request_id = request_seq;
+    data->request_id = GPOINTER_TO_UINT(user_data);
     g_idle_add(stream_idle_callback, data);
 }
 
 static void on_stream_final(const gchar *response, gpointer user_data)
 {
-    (void)user_data;
-
     StreamIdleData *data = g_new0(StreamIdleData, 1);
     data->is_final = TRUE;
     data->full_response = response ? g_strdup(response) : NULL;
-    data->request_id = request_seq;
+    data->request_id = GPOINTER_TO_UINT(user_data);
     g_idle_add(stream_idle_callback, data);
 }
 
@@ -278,6 +279,18 @@ static void register_config_models(void)
                       json_string_value(jprovider));
             continue;
         }
+        /* Skip duplicates: re-initializing the plugin registers the same
+         * models[] again. */
+        gboolean dup = FALSE;
+        for (gint i = 0; i < lumila_model_count(); i++) {
+            const LumilaModelEntry *e = lumila_model_registry_lookup(i);
+            if (g_strcmp0(e->model_name, json_string_value(jmodel)) == 0 &&
+                g_strcmp0(e->display_name, json_string_value(jname)) == 0) {
+                dup = TRUE;
+                break;
+            }
+        }
+        if (dup) continue;
         guint flags = lumila_model_flags_from_json(json_object_get(obj, "flags"));
         lumila_model_registry_add(json_string_value(jname),
                                   (LumilaProviderType)type,
@@ -287,6 +300,13 @@ static void register_config_models(void)
 
 void lumila_chat_init(void)
 {
+    /* Reset module state: this also runs when Geany re-enables the plugin
+     * after a cleanup that left shutting_down set. */
+    shutting_down = FALSE;
+    is_streaming = FALSE;
+    request_cancelled = FALSE;
+    plan_pending = FALSE;
+
     messages = g_array_new(FALSE, FALSE, sizeof(LumilaMessage));
 
     /* Config-defined models must exist before the default is resolved. */
@@ -632,6 +652,7 @@ static void on_response_received(const gchar *response, gpointer user_data)
                lumila_config_get_auto_retry() && pending_retry &&
                pending_retry->attempts < RETRY_MAX_ATTEMPTS &&
                pending_retry->request_id == request_id) {
+        is_streaming = TRUE; /* keep the "one request" guard during the wait */
         schedule_retry();
         lumila_sidebar_set_input_sensitive(FALSE);
         return;
@@ -685,6 +706,8 @@ gboolean lumila_chat_is_streaming(void)
 
 void lumila_chat_cancel_request(void)
 {
+    gboolean was_active = is_streaming;
+
     request_seq++;
     request_cancelled = TRUE;
     is_streaming = FALSE;
@@ -694,8 +717,13 @@ void lumila_chat_cancel_request(void)
         lumila_provider_cancel(current_provider);
     }
 
-    if (chat_view) {
+    /* The cancelled request's final callback is dropped by the
+     * request-id check, so close the stream and mark it here. Skip
+     * entirely when nothing was in flight — Esc at rest should be a
+     * no-op (stream_end would append a stray newline). */
+    if (chat_view && was_active) {
         lumila_chat_ui_stream_end(chat_view);
+        append_message_to_view("system", "[Cancelled]");
     }
     lumila_sidebar_set_status(NULL);
     lumila_sidebar_set_input_sensitive(TRUE);
@@ -1118,7 +1146,8 @@ static void send_request(const gchar *system_prompt, GArray *messages_to_send)
         lumila_chat_ui_stream_start(chat_view);
         lumila_provider_send_message_stream(current_provider, system_prompt,
                                                messages_to_send,
-                                               on_stream_chunk, on_stream_final, NULL);
+                                               on_stream_chunk, on_stream_final,
+                                               GUINT_TO_POINTER(request_seq));
     } else {
         lumila_provider_send_message(current_provider, system_prompt,
                                       messages_to_send, on_response_received,
@@ -1134,6 +1163,7 @@ void lumila_chat_send_message_ex(const gchar *message, gboolean allow_refs,
 
     /* New user message supersedes anything pending. */
     request_seq++;
+    request_cancelled = FALSE;
     retry_context_clear();
 
     // Extract @references (skipped for Send Selection/File, whose content
@@ -1343,6 +1373,21 @@ void lumila_chat_set_provider(gint provider_id)
     }
     current_provider_id = provider_id;
     request_seq++;
+    retry_context_clear();
+
+    /* Switching models mid-request: the old request's callbacks are
+     * dropped by the request-id check, so restore the UI here —
+     * otherwise the input stays disabled forever. */
+    if (is_streaming) {
+        is_streaming = FALSE;
+        request_cancelled = TRUE;
+        if (chat_view) {
+            lumila_chat_ui_stream_end(chat_view);
+            append_message_to_view("system", "[Cancelled — model changed]");
+        }
+        lumila_sidebar_set_status(NULL);
+        lumila_sidebar_set_input_sensitive(TRUE);
+    }
 
     if (current_provider) {
         /* Cancel and defer free so pending async callbacks can fire safely */
@@ -1401,6 +1446,16 @@ void lumila_chat_save_history(void)
 
 void lumila_chat_new_conversation(void)
 {
+    /* Invalidate and cancel any in-flight request so its chunks cannot
+     * leak into the fresh conversation. */
+    request_seq++;
+    request_cancelled = FALSE;
+    is_streaming = FALSE;
+    retry_context_clear();
+    if (current_provider) {
+        lumila_provider_cancel(current_provider);
+    }
+
     // Save current conversation
     lumila_chat_save_history();
 
@@ -1447,12 +1502,17 @@ void lumila_chat_load_conversation(const gchar *filename)
 {
     if (!filename) return;
 
-    /* Invalidate any in-flight request and pending retries. */
+    /* Invalidate, cancel any in-flight request and pending retries. */
     request_seq++;
     request_cancelled = TRUE;
     retry_context_clear();
     plan_pending = FALSE;
     is_streaming = FALSE;
+    if (current_provider) {
+        lumila_provider_cancel(current_provider);
+    }
+    lumila_sidebar_set_status(NULL);
+    lumila_sidebar_set_input_sensitive(TRUE);
 
     // Save current conversation first
     lumila_chat_save_history();

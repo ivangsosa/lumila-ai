@@ -241,7 +241,7 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
 - Clic en **History** para ver conversaciones guardadas
 - **Continue**: carga una conversación anterior en el chat activo y vuelve automáticamente al chat
 - **Delete**: elimina una conversación del historial (con confirmación previa)
-- **Búsqueda**: filtrá conversaciones por título o contenido desde el campo de búsqueda en la parte superior
+- **Búsqueda**: filtrá conversaciones por título, nombre de archivo o modelo desde el campo de búsqueda en la parte superior
 - Los títulos se guardan en el JSON y se restauran al recargar, sin perderse al reiniciar Geany
 - Las conversaciones se guardan automáticamente al crear una nueva o cerrar Geany
 

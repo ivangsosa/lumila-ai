@@ -25,13 +25,14 @@ static void on_continue_clicked(GtkButton *button, gpointer user_data)
 
 static void on_delete_dialog_response(GtkDialog *dialog, gint response_id, gpointer user_data)
 {
-    const gchar *filename = (const gchar *)user_data;
+    gchar *filename = (gchar *)user_data;
     if (response_id == GTK_RESPONSE_YES) {
         if (lumila_history_delete(filename)) {
             lumila_history_ui_refresh();
         }
     }
     gtk_widget_destroy(GTK_WIDGET(dialog));
+    g_free(filename);
 }
 
 static void on_delete_clicked(GtkButton *button, gpointer user_data)
@@ -53,7 +54,11 @@ static void on_delete_clicked(GtkButton *button, gpointer user_data)
 
     gtk_window_set_title(GTK_WINDOW(dialog), "Confirm Deletion");
 
-    g_signal_connect(dialog, "response", G_CALLBACK(on_delete_dialog_response), (gpointer)filename);
+    /* The button's user_data filename is freed when the row is destroyed
+     * (e.g. by a refresh while this dialog is open), so hand the dialog
+     * its own copy. */
+    g_signal_connect(dialog, "response", G_CALLBACK(on_delete_dialog_response),
+                     g_strdup(filename));
     gtk_widget_show_all(dialog);
 }
 

@@ -66,6 +66,12 @@ typedef struct {
     guint http_status;
     /* API-level error detected inside an SSE "data:" payload. */
     gchar *error_text;
+    /* Optional destination for total-token usage seen in stream events
+     * (providers point it at provider->last_usage). May be NULL. */
+    gint64 *usage_out;
+    gint64 usage_in;      /* last reported prompt/input token count, -1 unset */
+    gint64 usage_out_tok; /* last reported completion/output count, -1 unset */
+    gint64 usage_total;   /* explicit total when the API reports one */
     /* Provider-specific SSE chunk parser.
      * Returns newly-allocated text extracted from the JSON data line,
      * or NULL if no content. Caller must g_free(). */
