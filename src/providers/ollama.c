@@ -1,11 +1,14 @@
 #include "ollama.h"
 #include "provider_base.h"
+#include "model_registry.h"
+#include "model_resolve.h"
 #include "../config.h"
 #include <jansson.h>
 #include <string.h>
 #include <libsoup/soup.h>
 
 #define OLLAMA_API_BASE "http://localhost:11434/api/chat"
+#define OLLAMA_DEFAULT_MODEL "llama4"
 
 static void ollama_send_message(LumilaProvider *provider, const gchar *system_prompt,
                                  GArray *messages,
@@ -73,42 +76,16 @@ static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user
     LumilaResponseCallback callback = provider->callback;
     gpointer cb_data = provider->user_data;
 
-    GError *error = NULL;
-    GBytes *bytes = soup_session_send_and_read_finish(SOUP_SESSION(source), result, &error);
+    gboolean cancelled = FALSE;
+    gchar *response_text = lumila_provider_base_finish_send_and_read(
+        SOUP_SESSION(source), result, lumila_provider_base_parse_ollama,
+        provider->base.pending_msg, &provider->base.last_usage, &cancelled);
 
-    gchar *response_text = NULL;
-
-    if (error) {
-        response_text = g_strdup_printf("Error: %s", error->message);
-        g_error_free(error);
-    } else if (bytes) {
-        gsize size;
-        const gchar *data = g_bytes_get_data(bytes, &size);
-        if (provider->base.pending_msg) {
-            guint status = soup_message_get_status(provider->base.pending_msg);
-            if (status != 200) {
-                if (lumila_provider_base_is_retriable_status(status)) {
-                    response_text = g_strdup_printf("Transient HTTP Error %u: %s (please retry)", status,
-                        soup_message_get_reason_phrase(provider->base.pending_msg));
-                } else {
-                    response_text = g_strdup_printf("HTTP Error %u: %s", status,
-                        soup_message_get_reason_phrase(provider->base.pending_msg));
-                }
-            }
-        }
-        if (!response_text) {
-            response_text = lumila_provider_base_parse_ollama(data, size);
-        }
-        g_bytes_unref(bytes);
-    }
-
-    if (callback) {
+    if (callback && !cancelled) {
         callback(response_text, cb_data);
     }
 
-    if (response_text) {
-        g_free(response_text);
-    }
+    g_free(response_text);
 
     provider->callback = NULL;
     provider->user_data = NULL;
@@ -187,16 +164,7 @@ static void ollama_send_message(LumilaProvider *provider, const gchar *system_pr
     ollama->callback = callback;
     ollama->user_data = user_data;
 
-    // Select model based on model_id
-    const gchar *model_name;
-    switch (provider->model_id) {
-        case 0: model_name = "llama4"; break;                 // Llama 4 Scout
-        case 1: model_name = "qwen3.6:27b"; break;            // Qwen3.6 27B
-        case 2: model_name = "mistral-small3.1:24b"; break;   // Mistral Small 3.1 24B
-        default: model_name = "llama4"; break;
-    }
-    const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_OLLAMA);
-    if (custom) model_name = custom;
+    const gchar *model_name = lumila_provider_resolve_model(provider, OLLAMA_DEFAULT_MODEL);
 
     // Build JSON request for Ollama /api/chat endpoint
     json_t *root = json_object();
@@ -274,15 +242,7 @@ static void ollama_send_message_stream(LumilaProvider *provider, const gchar *sy
                                         LumilaResponseCallback final_cb,
                                         gpointer user_data)
 {
-    const gchar *model_name;
-    switch (provider->model_id) {
-        case 0: model_name = "llama4"; break;
-        case 1: model_name = "qwen3.6:27b"; break;
-        case 2: model_name = "mistral-small3.1:24b"; break;
-        default: model_name = "llama4"; break;
-    }
-    const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_OLLAMA);
-    if (custom) model_name = custom;
+    const gchar *model_name = lumila_provider_resolve_model(provider, OLLAMA_DEFAULT_MODEL);
 
     json_t *root = json_object();
     json_object_set_new(root, "model", json_string(model_name));

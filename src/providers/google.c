@@ -1,11 +1,14 @@
 #include "google.h"
 #include "provider_base.h"
+#include "model_registry.h"
+#include "model_resolve.h"
 #include "../config.h"
 #include <jansson.h>
 #include <string.h>
 #include <libsoup/soup.h>
 
 #define GOOGLE_API_BASE "https://generativelanguage.googleapis.com/v1beta/models/"
+#define GOOGLE_DEFAULT_MODEL "gemini-3.8-flash"
 
 static void google_send_message(LumilaProvider *provider, const gchar *system_prompt,
                                  GArray *messages,
@@ -35,11 +38,11 @@ LumilaProvider *google_provider_new(void)
     provider->base.type = LUMILA_PROVIDER_GOOGLE;
 #if SOUP_CHECK_VERSION(3, 0, 0)
     provider->base.session = soup_session_new_with_options(
-        "timeout", (lumila_config_get_timeout(LUMILA_PROVIDER_GOOGLE) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_GOOGLE) : 60),
+        "timeout", (lumila_config_get_timeout(LUMILA_PROVIDER_GOOGLE) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_GOOGLE) : 180),
         NULL);
 #else
     provider->base.session = soup_session_new_with_options(
-        SOUP_SESSION_TIMEOUT, (lumila_config_get_timeout(LUMILA_PROVIDER_GOOGLE) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_GOOGLE) : 60),
+        SOUP_SESSION_TIMEOUT, (lumila_config_get_timeout(LUMILA_PROVIDER_GOOGLE) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_GOOGLE) : 180),
         NULL);
 #endif
     provider->base.cancellable = g_cancellable_new();
@@ -66,48 +69,20 @@ static void google_cancel(LumilaProvider *provider)
 #if SOUP_CHECK_VERSION(3, 0, 0)
 static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user_data)
 {
-    (void)source;
-
     GoogleProvider *provider = (GoogleProvider *)user_data;
     LumilaResponseCallback callback = provider->callback;
     gpointer cb_data = provider->user_data;
 
-    GError *error = NULL;
-    GBytes *bytes = soup_session_send_and_read_finish(SOUP_SESSION(source), result, &error);
+    gboolean cancelled = FALSE;
+    gchar *response_text = lumila_provider_base_finish_send_and_read(
+        SOUP_SESSION(source), result, lumila_provider_base_parse_google,
+        provider->base.pending_msg, &provider->base.last_usage, &cancelled);
 
-    gchar *response_text = NULL;
-
-    if (error) {
-        response_text = g_strdup_printf("Error: %s", error->message);
-        g_error_free(error);
-    } else if (bytes) {
-        gsize size;
-        const gchar *data = g_bytes_get_data(bytes, &size);
-        if (provider->base.pending_msg) {
-            guint status = soup_message_get_status(provider->base.pending_msg);
-            if (status != 200) {
-                if (lumila_provider_base_is_retriable_status(status)) {
-                    response_text = g_strdup_printf("Transient HTTP Error %u: %s (please retry)", status,
-                        soup_message_get_reason_phrase(provider->base.pending_msg));
-                } else {
-                    response_text = g_strdup_printf("HTTP Error %u: %s", status,
-                        soup_message_get_reason_phrase(provider->base.pending_msg));
-                }
-            }
-        }
-        if (!response_text) {
-            response_text = lumila_provider_base_parse_google(data, size);
-        }
-        g_bytes_unref(bytes);
-    }
-
-    if (callback) {
+    if (callback && !cancelled) {
         callback(response_text, cb_data);
     }
 
-    if (response_text) {
-        g_free(response_text);
-    }
+    g_free(response_text);
 
     provider->callback = NULL;
     provider->user_data = NULL;
@@ -182,16 +157,7 @@ static void google_send_message(LumilaProvider *provider, const gchar *system_pr
         return;
     }
 
-    // Select model based on model_id
-    const gchar *model_name;
-    switch (provider->model_id) {
-        case 0: model_name = "gemini-3.6-flash"; break;        // Gemini 3.6 Flash
-        case 1: model_name = "gemini-3.1-pro-preview"; break;  // Gemini 3.1 Pro Preview
-        case 2: model_name = "gemini-2.5-pro"; break;          // Gemini 2.5 Pro (GA stable)
-        default: model_name = "gemini-3.6-flash"; break;
-    }
-    const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_GOOGLE);
-    if (custom) model_name = custom;
+    const gchar *model_name = lumila_provider_resolve_model(provider, GOOGLE_DEFAULT_MODEL);
 
     // Build URL (API key sent via header for security)
     const gchar *base = lumila_config_get_endpoint(LUMILA_PROVIDER_GOOGLE);
@@ -220,6 +186,14 @@ static void google_send_message(LumilaProvider *provider, const gchar *system_pr
     json_object_set_new(gen_config, "temperature", json_real(lumila_config_get_temperature()));
     json_object_set_new(gen_config, "maxOutputTokens", json_integer(lumila_config_get_max_tokens()));
     json_object_set_new(gen_config, "topP", json_real(lumila_config_get_top_p()));
+    if (provider->model_flags & LUMILA_MODEL_FLAG_THINKING_LEVEL) {
+        const gchar *level = lumila_config_get_thinking_level();
+        if (level && *level) {
+            json_t *thinking = json_object();
+            json_object_set_new(thinking, "thinkingLevel", json_string(level));
+            json_object_set_new(gen_config, "thinkingConfig", thinking);
+        }
+    }
     json_object_set_new(root, "generationConfig", gen_config);
 
     gchar *json_body = json_dumps(root, 0);
@@ -272,11 +246,25 @@ static gchar *google_parse_stream_chunk(const gchar *data, gsize len)
         json_t *content = json_object_get(first, "content");
         if (content) {
             json_t *parts = json_object_get(content, "parts");
-            if (parts && json_is_array(parts) && json_array_size(parts) > 0) {
-                json_t *first_part = json_array_get(parts, 0);
-                json_t *text = json_object_get(first_part, "text");
-                if (text && json_is_string(text)) {
-                    result = g_strdup(json_string_value(text));
+            if (parts && json_is_array(parts)) {
+                /* Concatenate all text parts; skip "thought" parts. */
+                GString *buf = g_string_new("");
+                gsize i;
+                json_t *part;
+                json_array_foreach(parts, i, part) {
+                    json_t *thought = json_object_get(part, "thought");
+                    if (thought && json_is_true(thought)) {
+                        continue;
+                    }
+                    json_t *text = json_object_get(part, "text");
+                    if (text && json_is_string(text)) {
+                        g_string_append(buf, json_string_value(text));
+                    }
+                }
+                if (buf->len > 0) {
+                    result = g_string_free(buf, FALSE);
+                } else {
+                    g_string_free(buf, TRUE);
                 }
             }
         }
@@ -299,15 +287,7 @@ static void google_send_message_stream(LumilaProvider *provider, const gchar *sy
         return;
     }
 
-    const gchar *model_name;
-    switch (provider->model_id) {
-        case 0: model_name = "gemini-3.6-flash"; break;
-        case 1: model_name = "gemini-3.1-pro-preview"; break;
-        case 2: model_name = "gemini-2.5-pro"; break;
-        default: model_name = "gemini-3.6-flash"; break;
-    }
-    const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_GOOGLE);
-    if (custom) model_name = custom;
+    const gchar *model_name = lumila_provider_resolve_model(provider, GOOGLE_DEFAULT_MODEL);
 
     const gchar *base = lumila_config_get_endpoint(LUMILA_PROVIDER_GOOGLE);
     if (!base) base = GOOGLE_API_BASE;
@@ -334,6 +314,14 @@ static void google_send_message_stream(LumilaProvider *provider, const gchar *sy
     json_object_set_new(gen_config, "temperature", json_real(lumila_config_get_temperature()));
     json_object_set_new(gen_config, "maxOutputTokens", json_integer(lumila_config_get_max_tokens()));
     json_object_set_new(gen_config, "topP", json_real(lumila_config_get_top_p()));
+    if (provider->model_flags & LUMILA_MODEL_FLAG_THINKING_LEVEL) {
+        const gchar *level = lumila_config_get_thinking_level();
+        if (level && *level) {
+            json_t *thinking = json_object();
+            json_object_set_new(thinking, "thinkingLevel", json_string(level));
+            json_object_set_new(gen_config, "thinkingConfig", thinking);
+        }
+    }
     json_object_set_new(root, "generationConfig", gen_config);
 
     gchar *json_body = json_dumps(root, 0);

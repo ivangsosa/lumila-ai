@@ -1,5 +1,7 @@
 #include "anthropic.h"
 #include "provider_base.h"
+#include "model_registry.h"
+#include "model_resolve.h"
 #include "../config.h"
 #include <jansson.h>
 #include <string.h>
@@ -7,6 +9,7 @@
 
 #define ANTHROPIC_API_BASE "https://api.anthropic.com/v1/messages"
 #define ANTHROPIC_VERSION "2023-06-01"
+#define ANTHROPIC_DEFAULT_MODEL "claude-sonnet-5-5"
 
 static void anthropic_send_message(LumilaProvider *provider, const gchar *system_prompt,
                                     GArray *messages,
@@ -37,11 +40,11 @@ LumilaProvider *anthropic_provider_new(void)
     provider->base.type = LUMILA_PROVIDER_ANTHROPIC;
 #if SOUP_CHECK_VERSION(3, 0, 0)
     provider->base.session = soup_session_new_with_options(
-        "timeout", (lumila_config_get_timeout(LUMILA_PROVIDER_ANTHROPIC) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_ANTHROPIC) : 60),
+        "timeout", (lumila_config_get_timeout(LUMILA_PROVIDER_ANTHROPIC) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_ANTHROPIC) : 180),
         NULL);
 #else
     provider->base.session = soup_session_new_with_options(
-        SOUP_SESSION_TIMEOUT, (lumila_config_get_timeout(LUMILA_PROVIDER_ANTHROPIC) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_ANTHROPIC) : 60),
+        SOUP_SESSION_TIMEOUT, (lumila_config_get_timeout(LUMILA_PROVIDER_ANTHROPIC) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_ANTHROPIC) : 180),
         NULL);
 #endif
     provider->base.cancellable = g_cancellable_new();
@@ -68,48 +71,20 @@ static void anthropic_cancel(LumilaProvider *provider)
 #if SOUP_CHECK_VERSION(3, 0, 0)
 static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user_data)
 {
-    (void)source;
-
     AnthropicProvider *provider = (AnthropicProvider *)user_data;
     LumilaResponseCallback callback = provider->callback;
     gpointer cb_data = provider->user_data;
 
-    GError *error = NULL;
-    GBytes *bytes = soup_session_send_and_read_finish(SOUP_SESSION(source), result, &error);
+    gboolean cancelled = FALSE;
+    gchar *response_text = lumila_provider_base_finish_send_and_read(
+        SOUP_SESSION(source), result, lumila_provider_base_parse_anthropic,
+        provider->base.pending_msg, &provider->base.last_usage, &cancelled);
 
-    gchar *response_text = NULL;
-
-    if (error) {
-        response_text = g_strdup_printf("Error: %s", error->message);
-        g_error_free(error);
-    } else if (bytes) {
-        gsize size;
-        const gchar *data = g_bytes_get_data(bytes, &size);
-        if (provider->base.pending_msg) {
-            guint status = soup_message_get_status(provider->base.pending_msg);
-            if (status != 200) {
-                if (lumila_provider_base_is_retriable_status(status)) {
-                    response_text = g_strdup_printf("Transient HTTP Error %u: %s (please retry)", status,
-                        soup_message_get_reason_phrase(provider->base.pending_msg));
-                } else {
-                    response_text = g_strdup_printf("HTTP Error %u: %s", status,
-                        soup_message_get_reason_phrase(provider->base.pending_msg));
-                }
-            }
-        }
-        if (!response_text) {
-            response_text = lumila_provider_base_parse_anthropic(data, size);
-        }
-        g_bytes_unref(bytes);
-    }
-
-    if (callback) {
+    if (callback && !cancelled) {
         callback(response_text, cb_data);
     }
 
-    if (response_text) {
-        g_free(response_text);
-    }
+    g_free(response_text);
 
     provider->callback = NULL;
     provider->user_data = NULL;
@@ -180,21 +155,26 @@ static void anthropic_send_message(LumilaProvider *provider, const gchar *system
     // Build JSON request for Anthropic API
     json_t *root = json_object();
 
-    // Select model based on model_id
-    const gchar *model_name;
-    switch (provider->model_id) {
-        case 0: model_name = "claude-sonnet-5"; break;   // Claude Sonnet 5
-        case 1: model_name = "claude-opus-5"; break;     // Claude Opus 5
-        case 2: model_name = "claude-haiku-4-5"; break;  // Claude Haiku 4.5
-        default: model_name = "claude-sonnet-5"; break;
-    }
-    const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_ANTHROPIC);
-    if (custom) model_name = custom;
-
+    const gchar *model_name = lumila_provider_resolve_model(provider, ANTHROPIC_DEFAULT_MODEL);
     json_object_set_new(root, "model", json_string(model_name));
     json_object_set_new(root, "max_tokens", json_integer(lumila_config_get_max_tokens()));
-    json_object_set_new(root, "temperature", json_real(lumila_config_get_temperature()));
-    json_object_set_new(root, "top_p", json_real(lumila_config_get_top_p()));
+
+    /* Claude 5.x rejects non-default temperature/top_p; newer models
+     * (incl. Haiku 4.5) reject temperature+top_p together, so top_p is
+     * never sent. Sampling params are only sent for models that admit
+     * them. Adaptive thinking is the default on 5.x; output_config.effort
+     * selects the reasoning effort. */
+    if (!(provider->model_flags & LUMILA_MODEL_FLAG_NO_SAMPLING)) {
+        json_object_set_new(root, "temperature", json_real(lumila_config_get_temperature()));
+    }
+    if (provider->model_flags & LUMILA_MODEL_FLAG_ANTHROPIC_EFFORT) {
+        const gchar *effort = lumila_config_get_reasoning_effort();
+        if (effort && *effort && g_strcmp0(effort, "none") != 0) {
+            json_t *output_config = json_object();
+            json_object_set_new(output_config, "effort", json_string(effort));
+            json_object_set_new(root, "output_config", output_config);
+        }
+    }
 
     /* Anthropic uses a top-level "system" field, not a system role in messages */
     if (system_prompt && *system_prompt) {
@@ -278,20 +258,21 @@ static void anthropic_send_message_stream(LumilaProvider *provider, const gchar 
     }
 
     json_t *root = json_object();
-    const gchar *model_name;
-    switch (provider->model_id) {
-        case 0: model_name = "claude-sonnet-5"; break;
-        case 1: model_name = "claude-opus-5"; break;
-        case 2: model_name = "claude-haiku-4-5"; break;
-        default: model_name = "claude-sonnet-5"; break;
-    }
-    const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_ANTHROPIC);
-    if (custom) model_name = custom;
-
+    const gchar *model_name = lumila_provider_resolve_model(provider, ANTHROPIC_DEFAULT_MODEL);
     json_object_set_new(root, "model", json_string(model_name));
     json_object_set_new(root, "max_tokens", json_integer(lumila_config_get_max_tokens()));
-    json_object_set_new(root, "temperature", json_real(lumila_config_get_temperature()));
-    json_object_set_new(root, "top_p", json_real(lumila_config_get_top_p()));
+
+    if (!(provider->model_flags & LUMILA_MODEL_FLAG_NO_SAMPLING)) {
+        json_object_set_new(root, "temperature", json_real(lumila_config_get_temperature()));
+    }
+    if (provider->model_flags & LUMILA_MODEL_FLAG_ANTHROPIC_EFFORT) {
+        const gchar *effort = lumila_config_get_reasoning_effort();
+        if (effort && *effort && g_strcmp0(effort, "none") != 0) {
+            json_t *output_config = json_object();
+            json_object_set_new(output_config, "effort", json_string(effort));
+            json_object_set_new(root, "output_config", output_config);
+        }
+    }
     json_object_set_new(root, "stream", json_true());
 
     /* Anthropic uses a top-level "system" field, not a system role in messages */

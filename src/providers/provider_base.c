@@ -36,6 +36,16 @@ gchar *lumila_provider_base_parse_openai(const gchar *data, gsize size)
                     response_text = g_strdup(json_string_value(content));
                 }
             }
+            if (response_text) {
+                json_t *finish = json_object_get(first, "finish_reason");
+                const gchar *fr = finish && json_is_string(finish) ? json_string_value(finish) : NULL;
+                if (g_strcmp0(fr, "length") == 0) {
+                    gchar *tmp = g_strconcat(response_text,
+                        "\n\n*[Response truncated: max tokens reached]*", NULL);
+                    g_free(response_text);
+                    response_text = tmp;
+                }
+            }
         }
     }
 
@@ -56,11 +66,41 @@ gchar *lumila_provider_base_parse_anthropic(const gchar *data, gsize size)
     response_text = parse_api_error(root);
     if (!response_text) {
         json_t *content = json_object_get(root, "content");
-        if (content && json_is_array(content) && json_array_size(content) > 0) {
-            json_t *first = json_array_get(content, 0);
-            json_t *text = json_object_get(first, "text");
-            if (text && json_is_string(text)) {
-                response_text = g_strdup(json_string_value(text));
+        if (content && json_is_array(content)) {
+            /* Newer Claude models may return thinking blocks before text;
+             * concatenate every block of type "text" instead of taking [0]. */
+            GString *buf = g_string_new("");
+            gsize i;
+            json_t *block;
+            json_array_foreach(content, i, block) {
+                json_t *type = json_object_get(block, "type");
+                if (type && json_is_string(type) &&
+                    g_strcmp0(json_string_value(type), "text") == 0) {
+                    json_t *text = json_object_get(block, "text");
+                    if (text && json_is_string(text)) {
+                        g_string_append(buf, json_string_value(text));
+                    }
+                }
+            }
+            if (buf->len > 0) {
+                response_text = g_string_free(buf, FALSE);
+            } else {
+                g_string_free(buf, TRUE);
+                json_t *stop = json_object_get(root, "stop_reason");
+                const gchar *sr = stop && json_is_string(stop) ? json_string_value(stop) : NULL;
+                if (g_strcmp0(sr, "refusal") == 0) {
+                    response_text = g_strdup("[Response refused by the model]");
+                }
+            }
+        }
+        if (response_text) {
+            json_t *stop = json_object_get(root, "stop_reason");
+            const gchar *sr = stop && json_is_string(stop) ? json_string_value(stop) : NULL;
+            if (g_strcmp0(sr, "max_tokens") == 0) {
+                gchar *tmp = g_strconcat(response_text,
+                    "\n\n*[Response truncated: max_tokens reached]*", NULL);
+                g_free(response_text);
+                response_text = tmp;
             }
         }
     }
@@ -87,12 +127,47 @@ gchar *lumila_provider_base_parse_google(const gchar *data, gsize size)
             json_t *content = json_object_get(first, "content");
             if (content) {
                 json_t *parts = json_object_get(content, "parts");
-                if (parts && json_is_array(parts) && json_array_size(parts) > 0) {
-                    json_t *first_part = json_array_get(parts, 0);
-                    json_t *text = json_object_get(first_part, "text");
-                    if (text && json_is_string(text)) {
-                        response_text = g_strdup(json_string_value(text));
+                if (parts && json_is_array(parts)) {
+                    /* Concatenate all text parts; skip thought parts
+                     * ("thought": true) emitted by thinking models. */
+                    GString *buf = g_string_new("");
+                    gsize i;
+                    json_t *part;
+                    json_array_foreach(parts, i, part) {
+                        json_t *thought = json_object_get(part, "thought");
+                        if (thought && json_is_true(thought)) {
+                            continue;
+                        }
+                        json_t *text = json_object_get(part, "text");
+                        if (text && json_is_string(text)) {
+                            g_string_append(buf, json_string_value(text));
+                        }
                     }
+                    if (buf->len > 0) {
+                        response_text = g_string_free(buf, FALSE);
+                    } else {
+                        g_string_free(buf, TRUE);
+                    }
+                }
+            }
+            if (response_text) {
+                json_t *finish = json_object_get(first, "finishReason");
+                const gchar *fr = finish && json_is_string(finish) ? json_string_value(finish) : NULL;
+                if (g_strcmp0(fr, "MAX_TOKENS") == 0) {
+                    gchar *tmp = g_strconcat(response_text,
+                        "\n\n*[Response truncated: max output tokens reached]*", NULL);
+                    g_free(response_text);
+                    response_text = tmp;
+                }
+            }
+        } else {
+            /* No candidates: the prompt may have been blocked. */
+            json_t *feedback = json_object_get(root, "promptFeedback");
+            if (feedback) {
+                json_t *reason = json_object_get(feedback, "blockReason");
+                if (reason && json_is_string(reason)) {
+                    response_text = g_strdup_printf("API Error: prompt blocked (%s)",
+                                                    json_string_value(reason));
                 }
             }
         }
@@ -248,11 +323,56 @@ static void lumila_provider_base_read_stream_line(GDataInputStream *data_stream,
                                                    GAsyncResult *result,
                                                    gpointer user_data);
 
+static void lumila_stream_state_finish(LumilaStreamState *state,
+                                       GDataInputStream *data_stream)
+{
+    if (data_stream) {
+        g_object_unref(data_stream);
+    }
+    if (state->stream) {
+        g_input_stream_close(state->stream, NULL, NULL);
+        g_object_unref(state->stream);
+        state->stream = NULL;
+    }
+    lumila_stream_state_free(state);
+}
+
+static void lumila_stream_state_emit_final(LumilaStreamState *state)
+{
+    gchar *full = NULL;
+    if (state->error_text) {
+        full = g_strdup(state->error_text);
+    } else if (state->http_status != 0 &&
+               !SOUP_STATUS_IS_SUCCESSFUL(state->http_status)) {
+        /* HTTP error body was accumulated raw in stream_buffer. */
+        const gchar *body = state->stream_buffer ? state->stream_buffer->str : NULL;
+        const gchar *reason = soup_status_get_phrase(state->http_status);
+        if (body && *body) {
+            gchar *err_msg = lumila_provider_base_extract_error_message(body, strlen(body));
+            if (err_msg) {
+                full = g_strdup_printf("HTTP Error %u: %s", state->http_status, err_msg);
+                g_free(err_msg);
+            } else {
+                gchar *trunc = g_strndup(body, 300);
+                full = g_strdup_printf("HTTP Error %u: %s", state->http_status, trunc);
+                g_free(trunc);
+            }
+        } else {
+            full = g_strdup_printf("HTTP Error %u: %s", state->http_status, reason);
+        }
+    } else if (state->stream_buffer) {
+        full = g_strdup(state->stream_buffer->str);
+    }
+    if (state->final_cb) {
+        state->final_cb(full, state->user_data);
+    }
+    g_free(full);
+}
+
 static void lumila_provider_base_on_stream_open(GObject *source,
                                                  GAsyncResult *result,
                                                  gpointer user_data)
 {
-    (void)source;
     LumilaStreamState *state = (LumilaStreamState *)user_data;
 
     GError *error = NULL;
@@ -260,13 +380,23 @@ static void lumila_provider_base_on_stream_open(GObject *source,
 
     if (error) {
         if (state->final_cb) {
-            gchar *err = g_strdup_printf("Error: %s", error->message);
-            state->final_cb(err, state->user_data);
-            g_free(err);
+            if (g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+                /* Cancelled before any data: emit NULL so the caller can
+                 * distinguish "no response" from an API error. */
+                state->final_cb(NULL, state->user_data);
+            } else {
+                gchar *err = g_strdup_printf("Error: %s", error->message);
+                state->final_cb(err, state->user_data);
+                g_free(err);
+            }
         }
         g_error_free(error);
         lumila_stream_state_free(state);
         return;
+    }
+
+    if (state->msg) {
+        state->http_status = soup_message_get_status(state->msg);
     }
 
     state->stream = stream;
@@ -290,32 +420,38 @@ static void lumila_provider_base_read_stream_line(GDataInputStream *data_stream,
     gchar *line = g_data_input_stream_read_line_finish(data_stream, result, &len, &error);
 
     if (error) {
-        g_object_unref(data_stream);
-        g_input_stream_close(state->stream, NULL, NULL);
-        g_object_unref(state->stream);
-        state->stream = NULL;
-        if (state->final_cb) {
+        if (g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+            /* Cancelled mid-stream: emit whatever partial text we have. */
+            lumila_stream_state_emit_final(state);
+        } else if (state->final_cb) {
             gchar *err = g_strdup_printf("Error: %s", error->message);
             state->final_cb(err, state->user_data);
             g_free(err);
         }
         g_error_free(error);
-        lumila_stream_state_free(state);
+        lumila_stream_state_finish(state, data_stream);
         return;
     }
 
     if (!line) {
-        g_object_unref(data_stream);
-        g_input_stream_close(state->stream, NULL, NULL);
-        g_object_unref(state->stream);
-        state->stream = NULL;
+        lumila_stream_state_emit_final(state);
+        lumila_stream_state_finish(state, data_stream);
+        return;
+    }
 
-        gchar *full = state->stream_buffer ? g_strdup(state->stream_buffer->str) : NULL;
-        if (state->final_cb) {
-            state->final_cb(full, state->user_data);
+    if (state->http_status != 0 && !SOUP_STATUS_IS_SUCCESSFUL(state->http_status)) {
+        /* Error responses are not SSE: accumulate the raw body so
+         * emit_final can build a meaningful message. */
+        if (!state->stream_buffer) {
+            state->stream_buffer = g_string_new("");
         }
-        g_free(full);
-        lumila_stream_state_free(state);
+        g_string_append(state->stream_buffer, line);
+        g_string_append_c(state->stream_buffer, '\n');
+        g_free(line);
+        g_data_input_stream_read_line_async(data_stream, G_PRIORITY_DEFAULT,
+                                            state->cancellable,
+                                            (GAsyncReadyCallback)lumila_provider_base_read_stream_line,
+                                            state);
         return;
     }
 
@@ -323,17 +459,8 @@ static void lumila_provider_base_read_stream_line(GDataInputStream *data_stream,
         const gchar *data = line + 6;
         if (g_strcmp0(data, "[DONE]") == 0) {
             g_free(line);
-            g_object_unref(data_stream);
-            g_input_stream_close(state->stream, NULL, NULL);
-            g_object_unref(state->stream);
-            state->stream = NULL;
-
-            gchar *full = state->stream_buffer ? g_strdup(state->stream_buffer->str) : NULL;
-            if (state->final_cb) {
-                state->final_cb(full, state->user_data);
-            }
-            g_free(full);
-            lumila_stream_state_free(state);
+            lumila_stream_state_emit_final(state);
+            lumila_stream_state_finish(state, data_stream);
             return;
         }
 
@@ -341,6 +468,23 @@ static void lumila_provider_base_read_stream_line(GDataInputStream *data_stream,
         json_error_t jerr;
         json_t *root = json_loads(data, 0, &jerr);
         if (root) {
+            /* Mid-stream API errors arrive as a normal "data:" event with
+             * an error payload: Anthropic {"type":"error",...},
+             * OpenAI-compatible {"error":{...}}. Record it and keep
+             * draining until EOF/[DONE]. */
+            if (!state->error_text) {
+                gchar *err = lumila_provider_base_extract_error_message(data, strlen(data));
+                if (err) {
+                    state->error_text = err;
+                    json_decref(root);
+                    g_free(line);
+                    g_data_input_stream_read_line_async(data_stream, G_PRIORITY_DEFAULT,
+                                                        state->cancellable,
+                                                        (GAsyncReadyCallback)lumila_provider_base_read_stream_line,
+                                                        state);
+                    return;
+                }
+            }
             json_t *choices = json_object_get(root, "choices");
             if (choices && json_is_array(choices) && json_array_size(choices) > 0) {
                 json_t *first = json_array_get(choices, 0);
@@ -424,15 +568,24 @@ void lumila_stream_state_free(LumilaStreamState *state)
     if (state->cancellable) {
         g_object_unref(state->cancellable);
     }
+    if (state->msg) {
+        g_object_unref(state->msg);
+    }
+    if (state->stream) {
+        g_object_unref(state->stream);
+        state->stream = NULL;
+    }
     if (state->stream_buffer) {
         g_string_free(state->stream_buffer, TRUE);
     }
+    g_free(state->error_text);
     g_free(state);
 }
 
 void lumila_provider_base_stream_start(SoupSession *session, SoupMessage *msg,
                                         LumilaStreamState *state)
 {
+    state->msg = g_object_ref(msg);
     soup_session_send_async(session, msg, G_PRIORITY_DEFAULT,
                             state->cancellable,
                             lumila_provider_base_on_stream_open, state);
@@ -466,12 +619,133 @@ gchar *lumila_provider_base_parse_stream_openai(const gchar *data, gsize len)
 gboolean lumila_provider_base_is_retriable_status(guint status)
 {
     return status == 429 || status == 500 || status == 502 ||
-           status == 503 || status == 504;
+           status == 503 || status == 504 || status == 529;
+}
+
+gchar *lumila_provider_base_extract_error_message(const gchar *data, gsize size)
+{
+    json_error_t jerr;
+    json_t *root = json_loadb(data, size, JSON_DISABLE_EOF_CHECK, &jerr);
+    if (!root) {
+        return NULL;
+    }
+
+    gchar *result = NULL;
+    json_t *type = json_object_get(root, "type");
+    json_t *error_obj = json_object_get(root, "error");
+
+    if (type && json_is_string(type) &&
+        g_strcmp0(json_string_value(type), "error") == 0) {
+        /* Anthropic: {"type":"error","error":{"type":"...","message":"..."}} */
+        json_t *msg = error_obj ? json_object_get(error_obj, "message") : NULL;
+        if (msg && json_is_string(msg)) {
+            result = g_strdup_printf("API Error: %s", json_string_value(msg));
+        }
+    } else if (error_obj) {
+        json_t *msg = json_object_get(error_obj, "message");
+        if (msg && json_is_string(msg)) {
+            result = g_strdup_printf("API Error: %s", json_string_value(msg));
+        } else if (json_is_string(error_obj)) {
+            result = g_strdup_printf("API Error: %s", json_string_value(error_obj));
+        }
+    }
+
+    json_decref(root);
+    return result;
+}
+
+gint64 lumila_provider_base_parse_usage_total_tokens(const gchar *data, gsize size)
+{
+    json_error_t jerr;
+    json_t *root = json_loadb(data, size, JSON_DISABLE_EOF_CHECK, &jerr);
+    if (!root) {
+        return -1;
+    }
+
+    gint64 total = -1;
+    json_t *usage = json_object_get(root, "usage");
+    if (usage) {
+        json_t *t = json_object_get(usage, "total_tokens");
+        if (t && json_is_integer(t)) {
+            total = json_integer_value(t);
+        } else {
+            /* Anthropic reports input/output separately. */
+            json_t *in = json_object_get(usage, "input_tokens");
+            json_t *out = json_object_get(usage, "output_tokens");
+            if (in && json_is_integer(in) && out && json_is_integer(out)) {
+                total = json_integer_value(in) + json_integer_value(out);
+            }
+        }
+    }
+    if (total < 0) {
+        json_t *meta = json_object_get(root, "usageMetadata");
+        if (meta) {
+            json_t *t = json_object_get(meta, "totalTokenCount");
+            if (t && json_is_integer(t)) {
+                total = json_integer_value(t);
+            }
+        }
+    }
+
+    json_decref(root);
+    return total;
 }
 
 void lumila_provider_base_sleep_ms(guint ms)
 {
     g_usleep((guint64)ms * 1000);
+}
+
+gchar *lumila_provider_base_finish_send_and_read(
+    SoupSession *session, GAsyncResult *result,
+    gchar *(*parse_func)(const gchar *data, gsize size),
+    SoupMessage *pending_msg, gint64 *usage_out, gboolean *cancelled_out)
+{
+    if (cancelled_out) {
+        *cancelled_out = FALSE;
+    }
+    if (usage_out) {
+        *usage_out = -1;
+    }
+
+    GError *error = NULL;
+    GBytes *bytes = soup_session_send_and_read_finish(session, result, &error);
+
+    if (error) {
+        if (g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+            if (cancelled_out) {
+                *cancelled_out = TRUE;
+            }
+            g_error_free(error);
+            return NULL;
+        }
+        gchar *txt = g_strdup_printf("Error: %s", error->message);
+        g_error_free(error);
+        return txt;
+    }
+
+    gchar *response_text = NULL;
+    if (bytes) {
+        gsize size;
+        const gchar *data = g_bytes_get_data(bytes, &size);
+        if (usage_out) {
+            *usage_out = lumila_provider_base_parse_usage_total_tokens(data, size);
+        }
+        guint status = pending_msg ? soup_message_get_status(pending_msg) : 0;
+        if (status != 0 && status != 200) {
+            gchar *emsg = lumila_provider_base_extract_error_message(data, size);
+            const gchar *detail = emsg ? emsg :
+                (pending_msg ? soup_message_get_reason_phrase(pending_msg) : "");
+            response_text = g_strdup_printf("%sHTTP Error %u: %s",
+                lumila_provider_base_is_retriable_status(status) ? "Transient " : "",
+                status, detail);
+            g_free(emsg);
+        } else if (parse_func) {
+            response_text = parse_func(data, size);
+        }
+        g_bytes_unref(bytes);
+    }
+    return response_text;
 }
 
 #endif

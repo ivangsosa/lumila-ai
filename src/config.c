@@ -4,6 +4,7 @@
 #include "plugin.h"
 #include <geanyplugin.h>
 #include <jansson.h>
+#include <glib/gstdio.h>
 
 #define CONFIG_FILE "lumila-ai/config.json"
 
@@ -11,6 +12,79 @@ static gchar *config_dir = NULL;
 static gchar *config_file = NULL;
 static json_t *config_root = NULL;
 static json_t *api_keys_obj = NULL;
+
+static json_t *get_defaults(void)
+{
+    if (!config_root) return NULL;
+    return json_object_get(config_root, "defaults");
+}
+
+/* Real-valued defaults key; accepts both JSON real and integer. */
+static gdouble get_defaults_real(const gchar *key, gdouble fallback)
+{
+    json_t *defaults = get_defaults();
+    if (!defaults) return fallback;
+    json_t *v = json_object_get(defaults, key);
+    if (v && json_is_real(v)) return json_real_value(v);
+    if (v && json_is_integer(v)) return (gdouble) json_integer_value(v);
+    return fallback;
+}
+
+static gint get_defaults_int(const gchar *key, gint fallback)
+{
+    json_t *defaults = get_defaults();
+    if (!defaults) return fallback;
+    json_t *v = json_object_get(defaults, key);
+    if (v && json_is_integer(v)) return (gint) json_integer_value(v);
+    return fallback;
+}
+
+static gboolean get_defaults_bool(const gchar *key, gboolean fallback)
+{
+    json_t *defaults = get_defaults();
+    if (!defaults) return fallback;
+    json_t *v = json_object_get(defaults, key);
+    if (v && json_is_boolean(v)) return json_is_true(v);
+    return fallback;
+}
+
+static const gchar *get_defaults_string(const gchar *key, const gchar *fallback)
+{
+    json_t *defaults = get_defaults();
+    if (!defaults) return fallback;
+    json_t *v = json_object_get(defaults, key);
+    if (v && json_is_string(v) && *json_string_value(v)) return json_string_value(v);
+    return fallback;
+}
+
+static json_t *ensure_defaults(void)
+{
+    if (!config_root) return NULL;
+    json_t *defaults = json_object_get(config_root, "defaults");
+    if (!defaults) {
+        defaults = json_object();
+        json_object_set_new(config_root, "defaults", defaults);
+    }
+    return defaults;
+}
+
+static void set_defaults_bool(const gchar *key, gboolean value)
+{
+    json_t *defaults = ensure_defaults();
+    if (defaults) {
+        json_object_set_new(defaults, key, json_boolean(value));
+        lumila_config_save();
+    }
+}
+
+static void set_defaults_string(const gchar *key, const gchar *value)
+{
+    json_t *defaults = ensure_defaults();
+    if (defaults) {
+        json_object_set_new(defaults, key, json_string(value ? value : ""));
+        lumila_config_save();
+    }
+}
 
 void lumila_config_init(void)
 {
@@ -38,11 +112,30 @@ void lumila_config_init(void)
 
         json_t *defaults = json_object();
         json_object_set_new(defaults, "temperature", json_real(0.3));
-        json_object_set_new(defaults, "max_tokens", json_integer(2048));
+        json_object_set_new(defaults, "max_tokens", json_integer(8192));
         json_object_set_new(defaults, "top_p", json_real(0.9));
         json_object_set_new(defaults, "repeat_penalty", json_real(1.1));
         json_object_set_new(defaults, "default_provider_id", json_integer(9));
+        json_object_set_new(defaults, "reasoning_effort", json_string("medium"));
+        json_object_set_new(defaults, "thinking_level", json_string("medium"));
+        json_object_set_new(defaults, "context_max_chars", json_integer(20000));
+        json_object_set_new(defaults, "confirm_edits", json_true());
+        json_object_set_new(defaults, "auto_retry", json_true());
+        json_object_set_new(defaults, "history_max_messages", json_integer(40));
+        json_object_set_new(defaults, "plan_mode", json_false());
         json_object_set_new(root, "defaults", defaults);
+
+        json_t *custom = json_object();
+        json_object_set_new(root, "custom_models", custom);
+
+        json_t *endpoints = json_object();
+        json_object_set_new(root, "endpoints", endpoints);
+
+        json_t *timeouts = json_object();
+        json_object_set_new(root, "timeouts", timeouts);
+
+        json_t *models = json_array();
+        json_object_set_new(root, "models", models);
     }
 
     config_root = root;
@@ -53,13 +146,34 @@ void lumila_config_init(void)
     }
 }
 
+gboolean lumila_config_save(void)
+{
+    if (!config_root || !config_file) {
+        return FALSE;
+    }
+    /* Atomic write: dump to a temp file in the same dir, then rename, so
+     * a crash mid-write cannot corrupt config.json. */
+    gchar *tmp = g_strdup_printf("%s.tmp", config_file);
+    if (json_dump_file(config_root, tmp, JSON_INDENT(2)) != 0) {
+        g_warning("Lumila: failed to write %s", tmp);
+        g_free(tmp);
+        return FALSE;
+    }
+    g_chmod(tmp, 0600);
+    if (g_rename(tmp, config_file) != 0) {
+        g_warning("Lumila: failed to rename %s -> %s", tmp, config_file);
+        g_unlink(tmp);
+        g_free(tmp);
+        return FALSE;
+    }
+    g_free(tmp);
+    return TRUE;
+}
+
 void lumila_config_cleanup(void)
 {
     if (config_root) {
-        // Save config
-        if (json_dump_file(config_root, config_file, JSON_INDENT(2)) != 0) {
-            g_warning("Lumila: failed to save config to %s", config_file);
-        }
+        lumila_config_save();
         json_decref(config_root);
         config_root = NULL;
         api_keys_obj = NULL;
@@ -77,7 +191,8 @@ const gchar *lumila_config_get_api_key(LumilaProviderType provider)
     json_t *value = json_object_get(api_keys_obj, key_name);
 
     if (value && json_is_string(value)) {
-        return json_string_value(value);
+        const gchar *val = json_string_value(value);
+        return (val && *val) ? val : NULL;
     }
 
     return NULL;
@@ -88,82 +203,43 @@ void lumila_config_set_api_key(LumilaProviderType provider, const gchar *key)
     if (!api_keys_obj) return;
 
     const gchar *key_name = lumila_provider_get_key_name(provider);
-    json_object_set_new(api_keys_obj, key_name, json_string(key));
+    json_object_set_new(api_keys_obj, key_name, json_string(key ? key : ""));
+    lumila_config_save();
 }
 
 gdouble lumila_config_get_temperature(void)
 {
-    if (!config_root) return 0.3;
-
-    json_t *defaults = json_object_get(config_root, "defaults");
-    if (!defaults) return 0.3;
-
-    json_t *temp = json_object_get(defaults, "temperature");
-    if (temp && json_is_real(temp)) {
-        return json_real_value(temp);
-    }
-
-    return 0.3;
+    return get_defaults_real("temperature", 0.3);
 }
 
 gint lumila_config_get_max_tokens(void)
 {
-    if (!config_root) return 2048;
-
-    json_t *defaults = json_object_get(config_root, "defaults");
-    if (!defaults) return 2048;
-
-    json_t *max_tok = json_object_get(defaults, "max_tokens");
-    if (max_tok && json_is_integer(max_tok)) {
-        return json_integer_value(max_tok);
-    }
-
-    return 2048;
+    return get_defaults_int("max_tokens", 8192);
 }
 
 gdouble lumila_config_get_top_p(void)
 {
-    if (!config_root) return 0.9;
-
-    json_t *defaults = json_object_get(config_root, "defaults");
-    if (!defaults) return 0.9;
-
-    json_t *top = json_object_get(defaults, "top_p");
-    if (top && json_is_real(top)) {
-        return json_real_value(top);
-    }
-
-    return 0.9;
+    return get_defaults_real("top_p", 0.9);
 }
 
 gdouble lumila_config_get_repeat_penalty(void)
 {
-    if (!config_root) return 1.1;
-
-    json_t *defaults = json_object_get(config_root, "defaults");
-    if (!defaults) return 1.1;
-
-    json_t *repeat = json_object_get(defaults, "repeat_penalty");
-    if (repeat && json_is_real(repeat)) {
-        return json_real_value(repeat);
-    }
-
-    return 1.1;
+    return get_defaults_real("repeat_penalty", 1.1);
 }
 
 gint lumila_config_get_default_provider(void)
 {
-    if (!config_root) return 9; // OpenRouter Auto por defecto
+    return get_defaults_int("default_provider_id", 9); // OpenRouter Auto por defecto
+}
 
-    json_t *defaults = json_object_get(config_root, "defaults");
-    if (!defaults) return 9;
+const gchar *lumila_config_get_default_model(void)
+{
+    return get_defaults_string("default_model", NULL);
+}
 
-    json_t *provider = json_object_get(defaults, "default_provider_id");
-    if (provider && json_is_integer(provider)) {
-        return json_integer_value(provider);
-    }
-
-    return 9; // OpenRouter Auto por defecto
+void lumila_config_set_default_model(const gchar *model_name)
+{
+    set_defaults_string("default_model", model_name);
 }
 
 const gchar *lumila_config_get_custom_model(LumilaProviderType provider)
@@ -176,7 +252,8 @@ const gchar *lumila_config_get_custom_model(LumilaProviderType provider)
     const gchar *key_name = lumila_provider_get_key_name(provider);
     json_t *model = json_object_get(custom, key_name);
     if (model && json_is_string(model)) {
-        return json_string_value(model);
+        const gchar *val = json_string_value(model);
+        return (val && *val) ? val : NULL;
     }
 
     return NULL;
@@ -217,28 +294,62 @@ gint lumila_config_get_timeout(LumilaProviderType provider)
 
 gboolean lumila_config_get_ask_mode(void)
 {
-    if (!config_root) return FALSE;
-
-    json_t *defaults = json_object_get(config_root, "defaults");
-    if (!defaults) return FALSE;
-
-    json_t *mode = json_object_get(defaults, "ask_mode");
-    if (mode && json_is_boolean(mode)) {
-        return json_is_true(mode);
-    }
-
-    return FALSE;
+    return get_defaults_bool("ask_mode", FALSE);
 }
 
 void lumila_config_set_ask_mode(gboolean enabled)
 {
-    if (!config_root) return;
+    set_defaults_bool("ask_mode", enabled);
+}
 
-    json_t *defaults = json_object_get(config_root, "defaults");
-    if (!defaults) {
-        defaults = json_object();
-        json_object_set_new(config_root, "defaults", defaults);
-    }
+gboolean lumila_config_get_plan_mode(void)
+{
+    return get_defaults_bool("plan_mode", FALSE);
+}
 
-    json_object_set_new(defaults, "ask_mode", json_boolean(enabled));
+void lumila_config_set_plan_mode(gboolean enabled)
+{
+    set_defaults_bool("plan_mode", enabled);
+}
+
+gint lumila_config_get_context_max_chars(void)
+{
+    return get_defaults_int("context_max_chars", 20000);
+}
+
+gboolean lumila_config_get_confirm_edits(void)
+{
+    return get_defaults_bool("confirm_edits", TRUE);
+}
+
+void lumila_config_set_confirm_edits(gboolean enabled)
+{
+    set_defaults_bool("confirm_edits", enabled);
+}
+
+gboolean lumila_config_get_auto_retry(void)
+{
+    return get_defaults_bool("auto_retry", TRUE);
+}
+
+gint lumila_config_get_history_max_messages(void)
+{
+    return get_defaults_int("history_max_messages", 40);
+}
+
+const gchar *lumila_config_get_reasoning_effort(void)
+{
+    return get_defaults_string("reasoning_effort", "medium");
+}
+
+const gchar *lumila_config_get_thinking_level(void)
+{
+    return get_defaults_string("thinking_level", "medium");
+}
+
+json_t *lumila_config_get_models(void)
+{
+    if (!config_root) return NULL;
+    json_t *models = json_object_get(config_root, "models");
+    return (models && json_is_array(models)) ? models : NULL;
 }

@@ -1,11 +1,14 @@
 #include "openai.h"
 #include "provider_base.h"
+#include "model_registry.h"
+#include "model_resolve.h"
 #include "../config.h"
 #include <jansson.h>
 #include <string.h>
 #include <libsoup/soup.h>
 
 #define OPENAI_API_BASE "https://api.openai.com/v1/chat/completions"
+#define OPENAI_DEFAULT_MODEL "gpt-6.1-sol"
 
 static void openai_send_message(LumilaProvider *provider, const gchar *system_prompt,
                                  GArray *messages,
@@ -36,11 +39,11 @@ LumilaProvider *openai_provider_new(void)
     provider->base.type = LUMILA_PROVIDER_OPENAI;
 #if SOUP_CHECK_VERSION(3, 0, 0)
     provider->base.session = soup_session_new_with_options(
-        "timeout", (lumila_config_get_timeout(LUMILA_PROVIDER_OPENAI) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_OPENAI) : 60),
+        "timeout", (lumila_config_get_timeout(LUMILA_PROVIDER_OPENAI) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_OPENAI) : 180),
         NULL);
 #else
     provider->base.session = soup_session_new_with_options(
-        SOUP_SESSION_TIMEOUT, (lumila_config_get_timeout(LUMILA_PROVIDER_OPENAI) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_OPENAI) : 60),
+        SOUP_SESSION_TIMEOUT, (lumila_config_get_timeout(LUMILA_PROVIDER_OPENAI) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_OPENAI) : 180),
         NULL);
 #endif
     provider->base.cancellable = g_cancellable_new();
@@ -67,48 +70,20 @@ static void openai_cancel(LumilaProvider *provider)
 #if SOUP_CHECK_VERSION(3, 0, 0)
 static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user_data)
 {
-    (void)source;
-
     OpenAIProvider *provider = (OpenAIProvider *)user_data;
     LumilaResponseCallback callback = provider->callback;
     gpointer cb_data = provider->user_data;
 
-    GError *error = NULL;
-    GBytes *bytes = soup_session_send_and_read_finish(SOUP_SESSION(source), result, &error);
+    gboolean cancelled = FALSE;
+    gchar *response_text = lumila_provider_base_finish_send_and_read(
+        SOUP_SESSION(source), result, lumila_provider_base_parse_openai,
+        provider->base.pending_msg, &provider->base.last_usage, &cancelled);
 
-    gchar *response_text = NULL;
-
-    if (error) {
-        response_text = g_strdup_printf("Error: %s", error->message);
-        g_error_free(error);
-    } else if (bytes) {
-        gsize size;
-        const gchar *data = g_bytes_get_data(bytes, &size);
-        if (provider->base.pending_msg) {
-            guint status = soup_message_get_status(provider->base.pending_msg);
-            if (status != 200) {
-                if (lumila_provider_base_is_retriable_status(status)) {
-                    response_text = g_strdup_printf("Transient HTTP Error %u: %s (please retry)", status,
-                        soup_message_get_reason_phrase(provider->base.pending_msg));
-                } else {
-                    response_text = g_strdup_printf("HTTP Error %u: %s", status,
-                        soup_message_get_reason_phrase(provider->base.pending_msg));
-                }
-            }
-        }
-        if (!response_text) {
-            response_text = lumila_provider_base_parse_openai(data, size);
-        }
-        g_bytes_unref(bytes);
-    }
-
-    if (callback) {
+    if (callback && !cancelled) {
         callback(response_text, cb_data);
     }
 
-    if (response_text) {
-        g_free(response_text);
-    }
+    g_free(response_text);
 
     provider->callback = NULL;
     provider->user_data = NULL;
@@ -182,22 +157,30 @@ static void openai_send_message(LumilaProvider *provider, const gchar *system_pr
     // Build JSON request
     json_t *root = json_object();
 
-    // Select model based on model_id
-    const gchar *model_name;
-    switch (provider->model_id) {
-        case 0: model_name = "gpt-5.6-sol"; break;    // GPT-5.6 Sol
-        case 1: model_name = "gpt-5.6-terra"; break;  // GPT-5.6 Terra
-        case 2: model_name = "gpt-5.6-luna"; break;   // GPT-5.6 Luna
-        default: model_name = "gpt-5.6-sol"; break;
-    }
-    const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_OPENAI);
-    if (custom) model_name = custom;
-
+    const gchar *model_name = lumila_provider_resolve_model(provider, OPENAI_DEFAULT_MODEL);
     json_object_set_new(root, "model", json_string(model_name));
-    json_object_set_new(root, "max_tokens", json_integer(lumila_config_get_max_tokens()));
-    json_object_set_new(root, "temperature", json_real(lumila_config_get_temperature()));
-    json_object_set_new(root, "top_p", json_real(lumila_config_get_top_p()));
-    json_object_set_new(root, "frequency_penalty", json_real(lumila_config_get_repeat_penalty() - 1.0));
+
+    /* Reasoning models (GPT-6) reject sampling params and need
+     * max_completion_tokens + reasoning_effort instead. */
+    if (provider->model_flags & LUMILA_MODEL_FLAG_MAX_COMPLETION_TOKENS) {
+        json_object_set_new(root, "max_completion_tokens",
+                            json_integer(lumila_config_get_max_tokens()));
+    } else {
+        json_object_set_new(root, "max_tokens",
+                            json_integer(lumila_config_get_max_tokens()));
+    }
+    if (!(provider->model_flags & LUMILA_MODEL_FLAG_NO_SAMPLING)) {
+        json_object_set_new(root, "temperature", json_real(lumila_config_get_temperature()));
+        json_object_set_new(root, "top_p", json_real(lumila_config_get_top_p()));
+        json_object_set_new(root, "frequency_penalty",
+                            json_real(lumila_config_get_repeat_penalty() - 1.0));
+    }
+    if (provider->model_flags & LUMILA_MODEL_FLAG_REASONING_EFFORT) {
+        const gchar *effort = lumila_config_get_reasoning_effort();
+        if (effort && *effort && g_strcmp0(effort, "none") != 0) {
+            json_object_set_new(root, "reasoning_effort", json_string(effort));
+        }
+    }
 
     json_t *msgs = lumila_provider_base_build_messages_openai(system_prompt, messages);
     json_object_set_new(root, "messages", msgs);
@@ -256,18 +239,28 @@ static void openai_send_message_stream(LumilaProvider *provider, const gchar *sy
     }
 
     json_t *root = json_object();
-    const gchar *model_name;
-    switch (provider->model_id) {
-        case 0: model_name = "gpt-5.6-sol"; break;
-        case 1: model_name = "gpt-5.6-terra"; break;
-        case 2: model_name = "gpt-5.6-luna"; break;
-        default: model_name = "gpt-5.6-sol"; break;
-    }
+    const gchar *model_name = lumila_provider_resolve_model(provider, OPENAI_DEFAULT_MODEL);
     json_object_set_new(root, "model", json_string(model_name));
-    json_object_set_new(root, "max_tokens", json_integer(lumila_config_get_max_tokens()));
-    json_object_set_new(root, "temperature", json_real(lumila_config_get_temperature()));
-    json_object_set_new(root, "top_p", json_real(lumila_config_get_top_p()));
-    json_object_set_new(root, "frequency_penalty", json_real(lumila_config_get_repeat_penalty() - 1.0));
+
+    if (provider->model_flags & LUMILA_MODEL_FLAG_MAX_COMPLETION_TOKENS) {
+        json_object_set_new(root, "max_completion_tokens",
+                            json_integer(lumila_config_get_max_tokens()));
+    } else {
+        json_object_set_new(root, "max_tokens",
+                            json_integer(lumila_config_get_max_tokens()));
+    }
+    if (!(provider->model_flags & LUMILA_MODEL_FLAG_NO_SAMPLING)) {
+        json_object_set_new(root, "temperature", json_real(lumila_config_get_temperature()));
+        json_object_set_new(root, "top_p", json_real(lumila_config_get_top_p()));
+        json_object_set_new(root, "frequency_penalty",
+                            json_real(lumila_config_get_repeat_penalty() - 1.0));
+    }
+    if (provider->model_flags & LUMILA_MODEL_FLAG_REASONING_EFFORT) {
+        const gchar *effort = lumila_config_get_reasoning_effort();
+        if (effort && *effort && g_strcmp0(effort, "none") != 0) {
+            json_object_set_new(root, "reasoning_effort", json_string(effort));
+        }
+    }
     json_object_set_new(root, "stream", json_true());
 
     json_t *msgs = lumila_provider_base_build_messages_openai(system_prompt, messages);

@@ -39,11 +39,36 @@ const gchar *lumila_provider_get_name(LumilaProviderType type)
     }
 }
 
+gint lumila_provider_type_from_key_name(const gchar *key_name)
+{
+    if (!key_name) {
+        return -1;
+    }
+    for (gint t = 0; t <= LUMILA_PROVIDER_MISTRAL; t++) {
+        if (g_strcmp0(key_name, lumila_provider_get_key_name((LumilaProviderType)t)) == 0) {
+            return t;
+        }
+    }
+    return -1;
+}
+
+/* A cancelled GCancellable stays cancelled forever; swap in a fresh one
+ * at the start of every request so a previous cancel does not kill it. */
+static void lumila_provider_reset_cancellable(LumilaProvider *provider)
+{
+    if (provider->cancellable) {
+        g_object_unref(provider->cancellable);
+    }
+    provider->cancellable = g_cancellable_new();
+    provider->last_usage = -1;
+}
+
 void lumila_provider_send_message(LumilaProvider *provider, const gchar *system_prompt,
                                    GArray *messages,
                                    LumilaResponseCallback callback, gpointer user_data)
 {
     if (provider && provider->send_message) {
+        lumila_provider_reset_cancellable(provider);
         provider->send_message(provider, system_prompt, messages, callback, user_data);
     }
 }
@@ -54,8 +79,10 @@ void lumila_provider_send_message_stream(LumilaProvider *provider, const gchar *
                                           LumilaResponseCallback final_cb, gpointer user_data)
 {
     if (provider && provider->send_message_stream) {
+        lumila_provider_reset_cancellable(provider);
         provider->send_message_stream(provider, system_prompt, messages, chunk_cb, final_cb, user_data);
     } else if (provider && provider->send_message) {
+        lumila_provider_reset_cancellable(provider);
         provider->send_message(provider, system_prompt, messages, final_cb, user_data);
     }
 }

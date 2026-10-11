@@ -61,6 +61,11 @@ typedef struct {
     gpointer user_data;
     GString *stream_buffer;
     GInputStream *stream;
+    /* Kept to inspect the HTTP status of the streaming response. */
+    SoupMessage *msg;
+    guint http_status;
+    /* API-level error detected inside an SSE "data:" payload. */
+    gchar *error_text;
     /* Provider-specific SSE chunk parser.
      * Returns newly-allocated text extracted from the JSON data line,
      * or NULL if no content. Caller must g_free(). */
@@ -82,9 +87,32 @@ void lumila_provider_base_stream_start(SoupSession *session, SoupMessage *msg,
 /* Default OpenAI-compatible SSE chunk parser (choices[0].delta.content). */
 gchar *lumila_provider_base_parse_stream_openai(const gchar *data, gsize len);
 
+/* Common finish() for soup_session_send_and_read_async():
+ *  - extracts token usage (usage_out, -1 when absent)
+ *  - reports HTTP errors with the API-provided message, "Transient HTTP
+ *    Error" prefix for retriable statuses
+ *  - parses a 2xx body with parse_func
+ * Returns a newly allocated response string, or NULL on cancel
+ * (*cancelled_out set to TRUE) or when the body yielded no text. */
+gchar *lumila_provider_base_finish_send_and_read(
+    SoupSession *session, GAsyncResult *result,
+    gchar *(*parse_func)(const gchar *data, gsize size),
+    SoupMessage *pending_msg, gint64 *usage_out, gboolean *cancelled_out);
+
 /* Retry logic: returns TRUE if the HTTP status code indicates a transient
  * error that warrants a retry (429 rate limit, 500/502/503/504 server errors). */
 gboolean lumila_provider_base_is_retriable_status(guint status);
+
+/* Extract a human-readable message from an API error JSON body, or NULL.
+ * Handles OpenAI ("error":{message}), Anthropic ("type":"error") and
+ * Google error shapes. Returned string must be g_free()d. */
+gchar *lumila_provider_base_extract_error_message(const gchar *data, gsize size);
+
+/* Extract total token usage from a provider response body, or -1.
+ * Understands OpenAI (usage.total_tokens), Anthropic
+ * (usage.input_tokens + output_tokens) and Google
+ * (usageMetadata.totalTokenCount) shapes. */
+gint64 lumila_provider_base_parse_usage_total_tokens(const gchar *data, gsize size);
 
 /* Sleep for the given number of milliseconds. Used for retry backoff. */
 void lumila_provider_base_sleep_ms(guint ms);

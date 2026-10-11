@@ -1,11 +1,14 @@
 #include "deepseek.h"
 #include "provider_base.h"
+#include "model_registry.h"
+#include "model_resolve.h"
 #include "../config.h"
 #include <jansson.h>
 #include <string.h>
 #include <libsoup/soup.h>
 
 #define DEEPSEEK_API_BASE "https://api.deepseek.com/chat/completions"
+#define DEEPSEEK_DEFAULT_MODEL "deepseek-flash"
 
 static void deepseek_send_message(LumilaProvider *provider, const gchar *system_prompt,
                                   GArray *messages,
@@ -38,11 +41,11 @@ LumilaProvider *deepseek_provider_new(void)
     provider->base.type = LUMILA_PROVIDER_DEEPSEEK;
 #if SOUP_CHECK_VERSION(3, 0, 0)
     provider->base.session = soup_session_new_with_options(
-        "timeout", (lumila_config_get_timeout(LUMILA_PROVIDER_DEEPSEEK) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_DEEPSEEK) : 60),
+        "timeout", (lumila_config_get_timeout(LUMILA_PROVIDER_DEEPSEEK) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_DEEPSEEK) : 180),
         NULL);
 #else
     provider->base.session = soup_session_new_with_options(
-        SOUP_SESSION_TIMEOUT, (lumila_config_get_timeout(LUMILA_PROVIDER_DEEPSEEK) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_DEEPSEEK) : 60),
+        SOUP_SESSION_TIMEOUT, (lumila_config_get_timeout(LUMILA_PROVIDER_DEEPSEEK) > 0 ? lumila_config_get_timeout(LUMILA_PROVIDER_DEEPSEEK) : 180),
         NULL);
 #endif
     provider->base.cancellable = g_cancellable_new();
@@ -75,42 +78,16 @@ static void on_message_sent(GObject *source, GAsyncResult *result, gpointer user
     LumilaResponseCallback callback = provider->callback;
     gpointer cb_data = provider->user_data;
 
-    GError *error = NULL;
-    GBytes *bytes = soup_session_send_and_read_finish(SOUP_SESSION(source), result, &error);
+    gboolean cancelled = FALSE;
+    gchar *response_text = lumila_provider_base_finish_send_and_read(
+        SOUP_SESSION(source), result, lumila_provider_base_parse_openai,
+        provider->base.pending_msg, &provider->base.last_usage, &cancelled);
 
-    gchar *response_text = NULL;
-
-    if (error) {
-        response_text = g_strdup_printf("Error: %s", error->message);
-        g_error_free(error);
-    } else if (bytes) {
-        gsize size;
-        const gchar *data = g_bytes_get_data(bytes, &size);
-        if (provider->base.pending_msg) {
-            guint status = soup_message_get_status(provider->base.pending_msg);
-            if (status != 200) {
-                if (lumila_provider_base_is_retriable_status(status)) {
-                    response_text = g_strdup_printf("Transient HTTP Error %u: %s (please retry)", status,
-                        soup_message_get_reason_phrase(provider->base.pending_msg));
-                } else {
-                    response_text = g_strdup_printf("HTTP Error %u: %s", status,
-                        soup_message_get_reason_phrase(provider->base.pending_msg));
-                }
-            }
-        }
-        if (!response_text) {
-            response_text = lumila_provider_base_parse_openai(data, size);
-        }
-        g_bytes_unref(bytes);
-    }
-
-    if (callback) {
+    if (callback && !cancelled) {
         callback(response_text, cb_data);
     }
 
-    if (response_text) {
-        g_free(response_text);
-    }
+    g_free(response_text);
 
     provider->callback = NULL;
     provider->user_data = NULL;
@@ -184,16 +161,7 @@ static void deepseek_send_message(LumilaProvider *provider, const gchar *system_
     // Build JSON request
     json_t *root = json_object();
 
-    // Select model based on model_id
-    const gchar *model_name;
-    switch (provider->model_id) {
-        case 0: model_name = "deepseek-v4-flash"; break;  // DeepSeek V4 Flash
-        case 1: model_name = "deepseek-v4-pro"; break;    // DeepSeek V4 Pro
-        default: model_name = "deepseek-v4-flash"; break;
-    }
-    const gchar *custom = lumila_config_get_custom_model(LUMILA_PROVIDER_DEEPSEEK);
-    if (custom) model_name = custom;
-
+    const gchar *model_name = lumila_provider_resolve_model(provider, DEEPSEEK_DEFAULT_MODEL);
     json_object_set_new(root, "model", json_string(model_name));
     json_object_set_new(root, "max_tokens", json_integer(lumila_config_get_max_tokens()));
     json_object_set_new(root, "temperature", json_real(lumila_config_get_temperature()));
@@ -255,12 +223,7 @@ static void deepseek_send_message_stream(LumilaProvider *provider, const gchar *
     }
 
     json_t *root = json_object();
-    const gchar *model_name;
-    switch (provider->model_id) {
-        case 0: model_name = "deepseek-v4-flash"; break;
-        case 1: model_name = "deepseek-v4-pro"; break;
-        default: model_name = "deepseek-v4-flash"; break;
-    }
+    const gchar *model_name = lumila_provider_resolve_model(provider, DEEPSEEK_DEFAULT_MODEL);
     json_object_set_new(root, "model", json_string(model_name));
     json_object_set_new(root, "max_tokens", json_integer(lumila_config_get_max_tokens()));
     json_object_set_new(root, "temperature", json_real(lumila_config_get_temperature()));
