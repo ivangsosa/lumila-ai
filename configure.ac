@@ -16,7 +16,7 @@ LT_INIT([disable-static])
 PKG_PROG_PKG_CONFIG
 
 # Required packages
-PKG_CHECK_MODULES([GEANY], [geany >= 1.38])
+PKG_CHECK_MODULES([GEANY], [geany >= 2.0])
 PKG_CHECK_MODULES([GTK], [gtk+-3.0 >= 3.20])
 PKG_CHECK_MODULES([GLIB], [glib-2.0 >= 2.50])
 PKG_CHECK_MODULES([SOUP], [libsoup-3.0], 
