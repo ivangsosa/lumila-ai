@@ -38,22 +38,26 @@ GList *lumila_utils_parse_file_edits(const gchar *response, gchar **cleaned_out)
 
     for (gint i = 0; lines[i] != NULL; i++) {
         const gchar *line = lines[i];
+        /* Fence markers may arrive indented; detect them on the trimmed
+         * line but keep the original when it is file content. */
+        const gchar *trim = line;
+        while (*trim == ' ' || *trim == '\t') trim++;
 
-        if (!in_file_block && g_str_has_prefix(line, "```file:")) {
+        if (!in_file_block && g_str_has_prefix(trim, "```file:")) {
             in_file_block = TRUE;
             fence_depth = 0;
-            file_name = g_strdup(line + 8);
+            file_name = g_strdup(trim + 8);
             g_strstrip(file_name);
             file_code = g_string_new("");
             continue;
         }
 
-        if (in_file_block && g_str_has_prefix(line, "```")) {
-            gboolean opens_file = g_str_has_prefix(line, "```file:");
+        if (in_file_block && g_str_has_prefix(trim, "```")) {
+            gboolean opens_file = g_str_has_prefix(trim, "```file:");
             /* A bare "```" (optionally followed by whitespace) closes a
              * fence; "```lang" opens a nested one. */
             gboolean bare_close = !opens_file &&
-                (line[3] == '\0' || line[3] == ' ' || line[3] == '\t');
+                (trim[3] == '\0' || trim[3] == ' ' || trim[3] == '\t');
             if (bare_close && fence_depth == 0) {
                 in_file_block = FALSE;
                 if (file_name && *file_name) {

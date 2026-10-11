@@ -168,6 +168,7 @@ static void on_provider_changed(GtkComboBox *combo, gpointer user_data)
 {
     (void)user_data;
     gint active = gtk_combo_box_get_active(combo);
+    if (active < 0) return; /* transient "no selection" while populating */
     lumila_chat_set_provider(active);
 }
 
