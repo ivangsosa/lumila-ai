@@ -15,6 +15,15 @@ PLUGIN_SET_INFO(LUMILA_NAME,
                 LUMILA_VERSION,
                 LUMILA_AUTHOR)
 
+static gboolean on_lumila_key(guint key_id)
+{
+    switch (key_id) {
+        case 0: lumila_chat_send_selection();    break;
+        case 1: lumila_chat_send_current_file(); break;
+    }
+    return TRUE;
+}
+
 static gboolean lumila_init(GeanyPlugin *plugin, gpointer pdata)
 {
     (void)pdata;
@@ -24,6 +33,14 @@ static gboolean lumila_init(GeanyPlugin *plugin, gpointer pdata)
     lumila_config_init();
     lumila_chat_init();
     lumila_sidebar_init();
+
+    /* Editor keybindings (assignable in Geany's preferences). */
+    GeanyKeyGroup *kg = plugin_set_key_group(plugin, "lumila-ai", 2,
+                                             on_lumila_key);
+    keybindings_set_item(kg, 0, NULL, 0, 0, "lumila_send_selection",
+                         _("Lumila: Send selection to AI"), NULL);
+    keybindings_set_item(kg, 1, NULL, 0, 0, "lumila_send_file",
+                         _("Lumila: Send current file to AI"), NULL);
 
     return TRUE;
 }
@@ -48,6 +65,11 @@ void geany_load_module(GeanyPlugin *plugin)
 
     plugin->funcs->init = lumila_init;
     plugin->funcs->cleanup = lumila_cleanup;
+
+    /* Async provider callbacks may fire after cleanup (cancelled soup
+     * requests complete on the main loop). Keeping the module resident
+     * guarantees those callbacks still point to valid code. */
+    plugin_module_make_resident(plugin);
 
     GEANY_PLUGIN_REGISTER(plugin, 247);
 }

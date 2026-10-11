@@ -18,6 +18,7 @@ gint lumila_history_compare_by_date(LumilaHistoryEntry *a, LumilaHistoryEntry *b
 GArray *lumila_history_load_messages(const gchar *filename);
 void lumila_history_free_messages(GArray *msgs);
 gchar *lumila_history_load_title(const gchar *filename);
+gchar *lumila_history_load_created_at(const gchar *filename);
 gboolean lumila_history_delete(const gchar *filename);
 gboolean lumila_history_rename(const gchar *old_filename, const gchar *new_title);
 

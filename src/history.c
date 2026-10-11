@@ -56,13 +56,28 @@ GList *lumila_history_list(void)
             else
                 entry->created_at = g_strdup("");
 
-            json_t *pid = json_object_get(root, "provider_id");
-            if (pid && json_is_integer(pid)) {
-                gint id = json_integer_value(pid);
-                const gchar *model = lumila_model_registry_get_display_name(id);
-                entry->model_name = g_strdup(model ? model : "Unknown");
+            /* Prefer the model name stored at save time; fall back to
+             * resolving the legacy provider_id slot. */
+            json_t *mn = json_object_get(root, "model_name");
+            if (mn && json_is_string(mn) && *json_string_value(mn)) {
+                gint id = lumila_model_registry_find_by_model_name(
+                    json_string_value(mn));
+                entry->model_name = g_strdup(
+                    id >= 0 ? lumila_model_registry_get_display_name(id)
+                            : json_string_value(mn));
             } else {
-                entry->model_name = g_strdup("Unknown");
+                json_t *pid = json_object_get(root, "provider_id");
+                if (pid && json_is_integer(pid)) {
+                    gint id = json_integer_value(pid);
+                    if (id >= 0 && id < lumila_model_count()) {
+                        entry->model_name = g_strdup(
+                            lumila_model_registry_get_display_name(id));
+                    } else {
+                        entry->model_name = g_strdup("Unknown");
+                    }
+                } else {
+                    entry->model_name = g_strdup("Unknown");
+                }
             }
 
             list = g_list_prepend(list, entry);
@@ -165,6 +180,28 @@ gchar *lumila_history_load_title(const gchar *filename)
         if (val && *val) {
             result = g_strdup(val);
         }
+    }
+    json_decref(root);
+    return result;
+}
+
+gchar *lumila_history_load_created_at(const gchar *filename)
+{
+    gchar *dir = get_history_dir();
+    gchar *path = g_build_filename(dir, filename, NULL);
+    g_free(dir);
+
+    json_error_t err;
+    json_t *root = json_load_file(path, 0, &err);
+    g_free(path);
+
+    if (!root) {
+        return NULL;
+    }
+    json_t *created = json_object_get(root, "created_at");
+    gchar *result = NULL;
+    if (created && json_is_string(created) && *json_string_value(created)) {
+        result = g_strdup(json_string_value(created));
     }
     json_decref(root);
     return result;

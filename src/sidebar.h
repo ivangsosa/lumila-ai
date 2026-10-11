@@ -9,6 +9,7 @@ GtkWidget *lumila_sidebar_get_widget(void);
 
 void lumila_sidebar_set_status(const gchar *status);
 void lumila_sidebar_set_input_sensitive(gboolean sensitive);
+void lumila_sidebar_set_token_estimate(gint64 tokens);
 void lumila_sidebar_cancel_request(void);
 
 #endif

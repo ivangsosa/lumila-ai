@@ -135,15 +135,6 @@ void lumila_chat_ui_init(GtkTextView *view)
     g_object_unref(css_provider);
 }
 
-static gchar *get_current_time_string(void)
-{
-    time_t now = time(NULL);
-    struct tm *tm_info = localtime(&now);
-    if (!tm_info) return g_strdup("--:--");
-    gchar *time_str = g_strdup_printf("%02d:%02d", tm_info->tm_hour, tm_info->tm_min);
-    return time_str;
-}
-
 /* ============================================================================
  * Language-aware syntax highlighting
  * ============================================================================ */
@@ -441,7 +432,8 @@ static gboolean is_keyword_in_profile(const gchar *word, const LanguageProfile *
 static gchar *extract_language_from_fence(const gchar *line)
 {
     if (!g_str_has_prefix(line, "```")) return NULL;
-    const gchar *lang = line + 3;
+    const gchar *lang = line;
+    while (*lang == '`') lang++;   /* support 3 or 4+ backticks */
     while (*lang && g_ascii_isspace(*lang)) lang++;
     if (!*lang) return NULL;
     GString *s = g_string_new("");
@@ -453,7 +445,36 @@ static gchar *extract_language_from_fence(const gchar *line)
         g_free(result);
         return NULL;
     }
+    /* "```file:foo.c" → highlight by the file's extension. */
+    if (g_str_has_prefix(result, "file:")) {
+        const gchar *dot = strrchr(result, '.');
+        if (dot && dot[1]) {
+            gchar *ext = g_strdup(dot + 1);
+            g_free(result);
+            return ext;
+        }
+        g_free(result);
+        return NULL;
+    }
     return result;
+}
+
+/* Filename inside "```file:name" for display, or NULL. */
+static gchar *extract_file_header(const gchar *line)
+{
+    if (!g_str_has_prefix(line, "```file:") &&
+        !g_str_has_prefix(line, "````file:")) {
+        return NULL;
+    }
+    const gchar *name = strchr(line, ':') + 1;
+    while (*name && g_ascii_isspace(*name)) name++;
+    gchar *copy = g_strdup(name);
+    g_strchomp(copy);
+    if (!*copy) {
+        g_free(copy);
+        return NULL;
+    }
+    return copy;
 }
 
 static void insert_code_with_highlighting(GtkTextBuffer *buffer, GtkTextIter *iter,
@@ -755,12 +776,50 @@ void lumila_chat_ui_append_user_message(GtkTextView *view, const gchar *message)
     gtk_text_view_scroll_to_mark(view, mark, 0.0, FALSE, 0.0, 0.0);
 }
 
-static void insert_ai_message_body(GtkTextBuffer *buffer, GtkTextIter *iter, const gchar *message)
+/* Per-block "Copy" button anchored at the end of each code block.
+ * The button owns a copy of the block's text ("lumila-code") and a
+ * weak ref to the view ("lumila-view") for clipboard access. */
+static void on_copy_code_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)user_data;
+    gchar *code = g_object_get_data(G_OBJECT(button), "lumila-code");
+    GtkTextView *view = g_object_get_data(G_OBJECT(button), "lumila-view");
+    if (code && view) {
+        GtkClipboard *clip = gtk_widget_get_clipboard(GTK_WIDGET(view),
+                                                      GDK_SELECTION_CLIPBOARD);
+        gtk_clipboard_set_text(clip, code, -1);
+    }
+}
+
+static void add_copy_button(GtkTextView *view, GtkTextIter *iter,
+                            const gchar *code_text)
+{
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer(view);
+    GtkTextChildAnchor *anchor = gtk_text_buffer_create_child_anchor(buffer, iter);
+    GtkWidget *btn = gtk_button_new_with_label("Copy");
+    GtkWidget *lbl = gtk_bin_get_child(GTK_BIN(btn));
+    if (lbl) {
+        gtk_label_set_markup(GTK_LABEL(lbl),
+            "<small><tt>\xE2\x8E\x98 Copy</tt></small>");
+    }
+    gtk_widget_set_margin_start(btn, 6);
+    gtk_widget_show(btn);
+    g_object_set_data_full(G_OBJECT(btn), "lumila-code",
+                           g_strdup(code_text), g_free);
+    g_object_set_data(G_OBJECT(btn), "lumila-view", view);
+    g_signal_connect(btn, "clicked", G_CALLBACK(on_copy_code_clicked), NULL);
+    gtk_text_view_add_child_at_anchor(view, btn, anchor);
+}
+
+static void insert_ai_message_body(GtkTextView *view, GtkTextBuffer *buffer,
+                                   GtkTextIter *iter, const gchar *message)
 {
     gchar **lines = g_strsplit(message, "\n", -1);
     gboolean in_code_block = FALSE;
     const LanguageProfile *current_profile = NULL;
     gboolean in_multi_comment = FALSE;
+    GString *block_text = g_string_new("");
+    gchar *block_header = NULL;
 
     for (gint i = 0; lines[i] != NULL; i++) {
         gchar *line = lines[i];
@@ -770,6 +829,17 @@ static void insert_ai_message_body(GtkTextBuffer *buffer, GtkTextIter *iter, con
                 gchar *lang = extract_language_from_fence(line);
                 current_profile = lookup_language_profile(lang);
                 g_free(lang);
+                g_free(block_header);
+                block_header = extract_file_header(line);
+                g_string_truncate(block_text, 0);
+                if (block_header) {
+                    gchar *hdr = g_strdup_printf("\xF0\x9F\x93\x84 %s", block_header);
+                    gtk_text_buffer_insert_with_tags(buffer, iter, hdr, -1,
+                        code_block_tag, code_function_tag, NULL);
+                    gtk_text_buffer_insert_with_tags(buffer, iter, "\n", -1,
+                        code_block_tag, NULL);
+                    g_free(hdr);
+                }
                 in_code_block = TRUE;
                 in_multi_comment = FALSE;
             } else {
@@ -777,6 +847,11 @@ static void insert_ai_message_body(GtkTextBuffer *buffer, GtkTextIter *iter, con
                 current_profile = NULL;
                 in_multi_comment = FALSE;
                 gtk_text_buffer_insert(buffer, iter, "\n", -1);
+                /* Per-block copy button (anchored widget). */
+                if (block_text->len > 0) {
+                    add_copy_button(view, iter, block_text->str);
+                    gtk_text_buffer_insert(buffer, iter, "\n", -1);
+                }
             }
             continue;
         }
@@ -784,6 +859,10 @@ static void insert_ai_message_body(GtkTextBuffer *buffer, GtkTextIter *iter, con
         if (in_code_block) {
             insert_code_with_highlighting(buffer, iter, line, current_profile, &in_multi_comment);
             gtk_text_buffer_insert(buffer, iter, "\n", -1);
+            if (block_text->len > 0) {
+                g_string_append_c(block_text, '\n');
+            }
+            g_string_append(block_text, line);
         } else {
             gtk_text_buffer_insert_with_tags(buffer, iter, line, -1, ai_tag, NULL);
             if (lines[i+1] != NULL) {
@@ -792,6 +871,8 @@ static void insert_ai_message_body(GtkTextBuffer *buffer, GtkTextIter *iter, con
         }
     }
 
+    g_string_free(block_text, TRUE);
+    g_free(block_header);
     g_strfreev(lines);
     gtk_text_buffer_insert(buffer, iter, "\n", -1);
 }
@@ -811,7 +892,7 @@ void lumila_chat_ui_append_ai_message(GtkTextView *view, const gchar *message)
     gtk_text_buffer_insert_with_tags(buffer, &end, "Lumila", -1, ai_name_tag, NULL);
     gtk_text_buffer_insert(buffer, &end, "\n", -1);
 
-    insert_ai_message_body(buffer, &end, message);
+    insert_ai_message_body(view, buffer, &end, message);
 
     GtkTextMark *mark = gtk_text_buffer_get_insert(buffer);
     gtk_text_view_scroll_to_mark(view, mark, 0.0, FALSE, 0.0, 0.0);
@@ -837,6 +918,22 @@ void lumila_chat_ui_stream_start(GtkTextView *view)
     GtkTextBuffer *buffer = gtk_text_view_get_buffer(view);
     GtkTextIter end;
     gtk_text_buffer_get_end_iter(buffer, &end);
+
+    /* A previous request may have left its mark behind (cancel + resend):
+     * delete it instead of creating a duplicate "stream_mark". */
+    if (stream_mark) {
+        GtkTextMark *old = gtk_text_buffer_get_mark(buffer, "stream_mark");
+        if (old) {
+            GtkTextIter start;
+            gtk_text_buffer_get_iter_at_mark(buffer, &start, old);
+            if (gtk_text_iter_compare(&start, &end) < 0) {
+                gtk_text_buffer_delete(buffer, &start, &end);
+            }
+            gtk_text_buffer_delete_mark(buffer, old);
+            gtk_text_buffer_get_end_iter(buffer, &end);
+        }
+        stream_mark = NULL;
+    }
 
     if (gtk_text_buffer_get_char_count(buffer) > 0) {
         gtk_text_buffer_insert(buffer, &end, "\n", -1);
@@ -890,11 +987,13 @@ void lumila_chat_ui_stream_end_and_render(GtkTextView *view, const gchar *full_m
         gtk_text_buffer_delete(buffer, &start, &end);
         gtk_text_buffer_delete_mark(buffer, stream_mark);
         stream_mark = NULL;
-        insert_ai_message_body(buffer, &start, full_message);
+        insert_ai_message_body(view, buffer, &start, full_message);
     } else {
-        insert_ai_message_body(buffer, &end, full_message);
+        insert_ai_message_body(view, buffer, &end, full_message);
     }
 
+    /* 'end' is stale after the mutations above; re-fetch before inserting. */
+    gtk_text_buffer_get_end_iter(buffer, &end);
     gtk_text_buffer_insert(buffer, &end, "\n", -1);
 
     GtkTextMark *mark = gtk_text_buffer_get_insert(buffer);

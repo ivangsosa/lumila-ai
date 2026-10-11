@@ -11,14 +11,21 @@ static GtkWidget *chat_view = NULL;
 static GtkWidget *input_view = NULL;
 static GtkWidget *provider_combo = NULL;
 static GtkWidget *status_label = NULL;
+static GtkWidget *tokens_label = NULL;
 static GtkWidget *action_button = NULL;
 static GtkWidget *mode_combo = NULL;
+static GtkWidget *item_execute_plan = NULL;
+static GtkWidget *item_confirm_edits = NULL;
 static gboolean is_streaming = FALSE;
 
 static void on_send_clicked(GtkButton *button, gpointer user_data)
 {
     (void)button;
     (void)user_data;
+
+    if (is_streaming) {
+        return;
+    }
 
     GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(input_view));
     GtkTextIter start, end;
@@ -37,6 +44,7 @@ static void on_send_selection_clicked(GtkButton *button, gpointer user_data)
 {
     (void)button;
     (void)user_data;
+    if (is_streaming) return;
     lumila_chat_send_selection();
 }
 
@@ -44,13 +52,8 @@ static void on_send_file_clicked(GtkButton *button, gpointer user_data)
 {
     (void)button;
     (void)user_data;
+    if (is_streaming) return;
     lumila_chat_send_current_file();
-}
-
-static void on_ask_toggled(GtkToggleButton *toggle, gpointer user_data)
-{
-    (void)user_data;
-    lumila_chat_set_ask_mode(gtk_toggle_button_get_active(toggle));
 }
 
 static void on_export_clicked(GtkButton *button, gpointer user_data)
@@ -116,6 +119,7 @@ static void on_mode_code(GtkMenuItem *item, gpointer user_data)
     (void)item;
     (void)user_data;
     lumila_chat_set_ask_mode(FALSE);
+    lumila_chat_set_plan_mode(FALSE);
     if (mode_combo) gtk_button_set_label(GTK_BUTTON(mode_combo), "Code");
 }
 
@@ -123,6 +127,7 @@ static void on_mode_ask(GtkMenuItem *item, gpointer user_data)
 {
     (void)item;
     (void)user_data;
+    lumila_chat_set_plan_mode(FALSE);
     lumila_chat_set_ask_mode(TRUE);
     if (mode_combo) gtk_button_set_label(GTK_BUTTON(mode_combo), "Ask");
 }
@@ -131,9 +136,22 @@ static void on_mode_plan(GtkMenuItem *item, gpointer user_data)
 {
     (void)item;
     (void)user_data;
-    /* Plan mode: ask mode off for now, will be expanded later */
     lumila_chat_set_ask_mode(FALSE);
+    lumila_chat_set_plan_mode(TRUE);
     if (mode_combo) gtk_button_set_label(GTK_BUTTON(mode_combo), "Plan");
+}
+
+static void on_execute_plan_clicked(GtkMenuItem *item, gpointer user_data)
+{
+    (void)item;
+    (void)user_data;
+    lumila_chat_execute_plan();
+}
+
+static void on_confirm_edits_toggled(GtkCheckMenuItem *item, gpointer user_data)
+{
+    (void)user_data;
+    lumila_config_set_confirm_edits(gtk_check_menu_item_get_active(item));
 }
 
 static void on_more_clicked(GtkButton *button, gpointer user_data)
@@ -156,14 +174,6 @@ static void on_new_chat_clicked(GtkButton *button, gpointer user_data)
     (void)user_data;
 
     lumila_chat_new_conversation();
-}
-
-static void on_cancel_clicked(GtkButton *button, gpointer user_data)
-{
-    (void)button;
-    (void)user_data;
-
-    lumila_sidebar_cancel_request();
 }
 
 static void on_history_clicked(GtkButton *button, gpointer user_data)
@@ -261,6 +271,28 @@ void lumila_sidebar_init(void)
     g_signal_connect(item_export, "activate", G_CALLBACK(on_export_clicked), NULL);
     gtk_menu_shell_append(GTK_MENU_SHELL(more_menu), item_export);
 
+    GtkWidget *sep2 = gtk_separator_menu_item_new();
+    gtk_menu_shell_append(GTK_MENU_SHELL(more_menu), sep2);
+
+    item_execute_plan = gtk_menu_item_new_with_label("Execute Plan");
+    gtk_widget_set_tooltip_text(item_execute_plan,
+        "Implement the plan produced in Plan mode");
+    g_signal_connect(item_execute_plan, "activate",
+                     G_CALLBACK(on_execute_plan_clicked), NULL);
+    gtk_menu_shell_append(GTK_MENU_SHELL(more_menu), item_execute_plan);
+
+    item_confirm_edits = gtk_check_menu_item_new_with_label("Confirm Edits");
+    gtk_widget_set_tooltip_text(item_confirm_edits,
+        "Ask before applying ```file: edits");
+    gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(item_confirm_edits),
+                                   lumila_config_get_confirm_edits());
+    g_signal_connect(item_confirm_edits, "toggled",
+                     G_CALLBACK(on_confirm_edits_toggled), NULL);
+    gtk_menu_shell_append(GTK_MENU_SHELL(more_menu), item_confirm_edits);
+
+    GtkWidget *sep3 = gtk_separator_menu_item_new();
+    gtk_menu_shell_append(GTK_MENU_SHELL(more_menu), sep3);
+
     GtkWidget *item_updates = gtk_menu_item_new_with_label("Check Updates");
     g_signal_connect(item_updates, "activate", G_CALLBACK(on_check_updates_clicked), NULL);
     gtk_menu_shell_append(GTK_MENU_SHELL(more_menu), item_updates);
@@ -318,23 +350,40 @@ void lumila_sidebar_init(void)
 
     mode_combo = gtk_menu_button_new();
     gtk_menu_button_set_popup(GTK_MENU_BUTTON(mode_combo), mode_menu);
-    gtk_button_set_label(GTK_BUTTON(mode_combo), "Code");
+    /* Reflect the persisted mode instead of always showing "Code". */
+    const gchar *mode_label = "Code";
+    if (lumila_config_get_plan_mode()) mode_label = "Plan";
+    else if (lumila_config_get_ask_mode()) mode_label = "Ask";
+    gtk_button_set_label(GTK_BUTTON(mode_combo), mode_label);
     gtk_menu_button_set_direction(GTK_MENU_BUTTON(mode_combo), GTK_ARROW_UP);
     gtk_box_pack_start(GTK_BOX(bottom_toolbar), mode_combo, FALSE, FALSE, 0);
 
-    // Model selector - populated dynamically from registry
+    // Model selector - populated dynamically from registry (+ config models)
     provider_combo = gtk_combo_box_text_new();
-    for (gint i = 0; i < LUMILA_NUM_PROVIDERS; i++) {
+    for (gint i = 0; i < lumila_model_count(); i++) {
         gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(provider_combo),
             lumila_model_registry_get_display_name(i));
     }
 
-    gint default_provider = lumila_config_get_default_provider();
-    if (default_provider < 0 || default_provider >= LUMILA_NUM_PROVIDERS)
+    gint default_provider = -1;
+    const gchar *default_model = lumila_config_get_default_model();
+    if (default_model) {
+        default_provider = lumila_model_registry_find_by_model_name(default_model);
+    }
+    if (default_provider < 0) {
+        default_provider = lumila_config_get_default_provider();
+    }
+    if (default_provider < 0 || default_provider >= lumila_model_count())
         default_provider = 9;
     gtk_combo_box_set_active(GTK_COMBO_BOX(provider_combo), default_provider);
     g_signal_connect(provider_combo, "changed", G_CALLBACK(on_provider_changed), NULL);
     gtk_box_pack_start(GTK_BOX(bottom_toolbar), provider_combo, FALSE, FALSE, 0);
+
+    // Token estimate for the last/next request
+    tokens_label = gtk_label_new("");
+    gtk_widget_set_tooltip_text(tokens_label,
+        "Estimated request tokens (or actual usage when reported)");
+    gtk_box_pack_start(GTK_BOX(bottom_toolbar), tokens_label, FALSE, FALSE, 0);
 
     // Spacer
     GtkWidget *bottom_spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
@@ -390,6 +439,17 @@ void lumila_sidebar_cleanup(void)
         gtk_widget_destroy(sidebar_widget);
         sidebar_widget = NULL;
     }
+    /* Reset dangling pointers so late idle callbacks/UI calls are no-ops. */
+    chat_view = NULL;
+    input_view = NULL;
+    provider_combo = NULL;
+    status_label = NULL;
+    tokens_label = NULL;
+    action_button = NULL;
+    mode_combo = NULL;
+    item_execute_plan = NULL;
+    item_confirm_edits = NULL;
+    is_streaming = FALSE;
 }
 
 GtkWidget *lumila_sidebar_get_widget(void)
@@ -425,6 +485,27 @@ void lumila_sidebar_set_input_sensitive(gboolean sensitive)
         } else {
             gtk_button_set_label(GTK_BUTTON(action_button), "Send");
         }
+    }
+    if (item_execute_plan) {
+        gtk_widget_set_sensitive(item_execute_plan,
+                                 sensitive && lumila_chat_get_plan_pending());
+    }
+}
+
+void lumila_sidebar_set_token_estimate(gint64 tokens)
+{
+    if (!tokens_label) return;
+    if (tokens <= 0) {
+        gtk_label_set_text(GTK_LABEL(tokens_label), "");
+    } else if (tokens >= 1000) {
+        gchar *txt = g_strdup_printf("~%d.%dk tok", (gint)(tokens / 1000),
+                                     (gint)((tokens % 1000) / 100));
+        gtk_label_set_text(GTK_LABEL(tokens_label), txt);
+        g_free(txt);
+    } else {
+        gchar *txt = g_strdup_printf("~%d tok", (gint)tokens);
+        gtk_label_set_text(GTK_LABEL(tokens_label), txt);
+        g_free(txt);
     }
 }
 

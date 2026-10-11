@@ -22,6 +22,7 @@ lumila_ai_la_SOURCES = \
 	providers/provider_base.h \
 	providers/model_registry.c \
 	providers/model_registry.h \
+	providers/model_resolve.h \
 	providers/openai.c \
 	providers/openai.h \
 	providers/anthropic.c \

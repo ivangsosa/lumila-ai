@@ -7,6 +7,12 @@ static GtkWidget *history_list = NULL;
 static GtkWidget *stack_ref = NULL;
 static gchar *search_filter = NULL;
 
+static void history_filename_free(gpointer data, GClosure *closure)
+{
+    (void)closure;
+    g_free(data);
+}
+
 static void on_continue_clicked(GtkButton *button, gpointer user_data)
 {
     (void)button;
@@ -86,12 +92,12 @@ static GtkWidget *create_history_row(LumilaHistoryEntry *entry)
 
     GtkWidget *continue_btn = gtk_button_new_with_label("Continue");
     g_signal_connect_data(continue_btn, "clicked", G_CALLBACK(on_continue_clicked),
-                          g_strdup(entry->filename), (GClosureNotify)g_free, 0);
+                          g_strdup(entry->filename), history_filename_free, 0);
     gtk_box_pack_start(GTK_BOX(box), continue_btn, FALSE, FALSE, 0);
 
     GtkWidget *delete_btn = gtk_button_new_with_label("Delete");
     g_signal_connect_data(delete_btn, "clicked", G_CALLBACK(on_delete_clicked),
-                          g_strdup(entry->filename), (GClosureNotify)g_free, 0);
+                          g_strdup(entry->filename), history_filename_free, 0);
     gtk_box_pack_start(GTK_BOX(box), delete_btn, FALSE, FALSE, 0);
 
     gtk_container_add(GTK_CONTAINER(row), box);
