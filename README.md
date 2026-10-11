@@ -62,7 +62,7 @@ AI Assistant plugin for Geany editor with multi-provider support, persistent his
 | 6 | Gemini 3.8 Flash             | Google      | Pago          |
 | 7 | Gemini 3.1 Pro Preview       | Google      | Pago          |
 | 8 | Gemini 3.6 Flash             | Google      | Pago          |
-| 9 | OpenRouter Auto              | OpenRouter  | Gratis        |
+| 9 | OpenRouter Auto              | OpenRouter  | Variable      |
 | 10 | DeepSeek V4.1 Flash         | DeepSeek    | Pago          |
 | 11 | DeepSeek V4 Pro             | DeepSeek    | Pago          |
 | 12 | Mistral Large 4 (preview)   | Mistral     | Pago          |
@@ -74,7 +74,11 @@ AI Assistant plugin for Geany editor with multi-provider support, persistent his
 | 18 | OpenRouter GLM-4.6          | OpenRouter  | Pago          |
 | 19 | OpenRouter Grok 4           | OpenRouter  | Pago          |
 | 20 | OpenRouter Qwen3.5 Plus     | OpenRouter  | Pago          |
-| 21 | OpenRouter Llama 3.3 Free   | OpenRouter  | Gratis        |
+| 21 | OpenRouter Free             | OpenRouter  | Gratis        |
+
+**OpenRouter Free** enruta automáticamente a un modelo gratuito disponible.
+Los modelos `:free` puntuales de OpenRouter se discontinúan sin aviso — si uno
+deja de responder, actualizá el `"model"` en `models[]` de tu `config.json`.
 
 Cada modelo lleva flags de capacidad que ajustan el request automáticamente:
 los modelos con razonamiento no envían `temperature`/`top_p`, los GPT-6 usan
