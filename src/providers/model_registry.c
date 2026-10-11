@@ -36,7 +36,7 @@ static const LumilaModelEntry lumila_builtin_models[LUMILA_NUM_PROVIDERS] = {
     { 18, "OpenRouter GLM-4.6",         LUMILA_PROVIDER_OPENROUTER, "z-ai/glm-4.6", 0 },
     { 19, "OpenRouter Grok 4",          LUMILA_PROVIDER_OPENROUTER, "x-ai/grok-4", 0 },
     { 20, "OpenRouter Qwen3.5 Plus",    LUMILA_PROVIDER_OPENROUTER, "qwen/qwen3.5-plus-20260420", 0 },
-    { 21, "OpenRouter Llama 3.3 Free",  LUMILA_PROVIDER_OPENROUTER, "meta-llama/llama-3.3-70b-instruct:free", 0 },
+    { 21, "OpenRouter Free",            LUMILA_PROVIDER_OPENROUTER, "openrouter/free", 0 },
 };
 
 /* Config-defined models (config.json "models": [...]). */
