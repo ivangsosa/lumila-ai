@@ -8,6 +8,8 @@
 #include "sidebar.h"
 #include "history.h"
 #include "utils.h"
+#include "diff.h"
+#include "autocomplete.h"
 #include <geanyplugin.h>
 #include <string.h>
 #include <time.h>
@@ -477,7 +479,7 @@ static const gchar *get_project_base(void)
 
 /* Resolve an edit filename to an absolute path relative to the project
  * or the current document directory. Caller frees. */
-static gchar *resolve_edit_path(const gchar *file_name)
+gchar *lumila_chat_resolve_edit_path(const gchar *file_name)
 {
     if (!file_name || !*file_name) return NULL;
     if (g_path_is_absolute(file_name)) {
@@ -500,9 +502,9 @@ static gchar *resolve_edit_path(const gchar *file_name)
 
 /* Find an open document matching the edit filename: exact path match,
  * then suffix match (doc path ends with "/name"), then basename. */
-static GeanyDocument *find_open_doc_for_edit(const gchar *file_name)
+GeanyDocument *lumila_chat_doc_for_edit(const gchar *file_name)
 {
-    gchar *resolved = resolve_edit_path(file_name);
+    gchar *resolved = lumila_chat_resolve_edit_path(file_name);
     gchar *basename = g_path_get_basename(file_name);
     GeanyDocument *match = NULL;
     GeanyDocument *basename_match = NULL;
@@ -540,7 +542,7 @@ static GeanyDocument *find_open_doc_for_edit(const gchar *file_name)
 
 static void replace_document_content(GeanyDocument *doc, const gchar *content)
 {
-    if (!doc || !doc->editor || !doc->editor->sci) return;
+    if (!doc || !doc->is_valid || !doc->editor || !doc->editor->sci) return;
     ScintillaObject *sci = doc->editor->sci;
     /* Targeted replace keeps the undo stack usable (sci_set_text does not). */
     sci_set_target_start(sci, 0);
@@ -549,9 +551,62 @@ static void replace_document_content(GeanyDocument *doc, const gchar *content)
     document_set_text_changed(doc, TRUE);
 }
 
+gchar *lumila_chat_apply_edits(GList *edits)
+{
+    GString *summary = g_string_new("");
+
+    /* Programmatic buffer changes must not trigger the AI autocomplete
+     * (each SC_MOD_INSERTTEXT would schedule a request). */
+    lumila_autocomplete_suppress(TRUE);
+    for (GList *l = edits; l; l = l->next) {
+        LumilaFileEdit *edit = l->data;
+        GeanyDocument *target = lumila_chat_doc_for_edit(edit->file_name);
+        gchar *resolved = NULL;
+
+        if (target) {
+            replace_document_content(target, edit->content);
+            g_string_append_printf(summary, "\n\xE2\x9C\x85 Edited: %s", edit->file_name);
+        } else if ((resolved = lumila_chat_resolve_edit_path(edit->file_name)) &&
+                   g_file_test(resolved, G_FILE_TEST_EXISTS)) {
+            /* File exists on disk but is not open: open it, then replace. */
+            GeanyDocument *opened = document_open_file(resolved, FALSE, NULL, NULL);
+            if (opened && opened->editor && opened->editor->sci) {
+                replace_document_content(opened, edit->content);
+                g_string_append_printf(summary, "\n\xE2\x9C\x85 Edited: %s", edit->file_name);
+            } else {
+                g_string_append_printf(summary, "\n\xE2\x9A\xA0 Could not open: %s", edit->file_name);
+            }
+        } else {
+            GeanyFiletype *ft = filetypes_detect_from_file(edit->file_name);
+            GeanyDocument *new_doc = document_new_file(
+                resolved ? resolved : edit->file_name, ft, edit->content);
+            if (new_doc && new_doc->editor && new_doc->editor->sci) {
+                g_string_append_printf(summary, "\n\xF0\x9F\x93\x84 Created: %s", edit->file_name);
+            }
+        }
+        g_free(resolved);
+    }
+    lumila_autocomplete_suppress(FALSE);
+
+    return g_string_free(summary, FALSE);
+}
+
+void lumila_chat_append_system(const gchar *text)
+{
+    append_message_to_view("system", text);
+}
+
+gint lumila_chat_get_current_provider_id(void)
+{
+    return current_provider_id;
+}
+
 static gchar *apply_file_edits(const gchar *response)
 {
     if (!response) return NULL;
+
+    /* Drop any preview still open from a previous response. */
+    lumila_diff_clear_all();
 
     gchar *cleaned = NULL;
     GList *edits = lumila_utils_parse_file_edits(response, &cleaned);
@@ -560,9 +615,18 @@ static gchar *apply_file_edits(const gchar *response)
         return NULL;
     }
 
-    GString *summary = g_string_new("");
-
     if (lumila_config_get_confirm_edits()) {
+        if (lumila_config_get_diff_preview()) {
+            /* Decorate affected files inline and show a non-modal
+             * Apply/Discard dialog; the edits list is owned by the
+             * diff module from here on. */
+            lumila_diff_preview_begin(edits);
+            g_free(cleaned);
+            return g_strdup(
+                _("\n\xF0\x9F\x94\x8D Diff preview shown in the editor "
+                  "(Apply/Discard in the dialog)"));
+        }
+
         GString *listing = g_string_new(
             _("The model wants to apply these file changes:"));
         for (GList *l = edits; l; l = l->next) {
@@ -572,8 +636,8 @@ static gchar *apply_file_edits(const gchar *response)
                 if (*p == '\n') lines++;
             }
             lines++;
-            GeanyDocument *existing = find_open_doc_for_edit(e->file_name);
-            gchar *resolved = resolve_edit_path(e->file_name);
+            GeanyDocument *existing = lumila_chat_doc_for_edit(e->file_name);
+            gchar *resolved = lumila_chat_resolve_edit_path(e->file_name);
             gboolean on_disk = resolved && g_file_test(resolved, G_FILE_TEST_EXISTS);
             g_string_append_printf(listing, "\n  \xE2\x80\xA2 %s (%d lines)%s",
                 e->file_name, lines,
@@ -594,45 +658,17 @@ static gchar *apply_file_edits(const gchar *response)
         g_string_free(listing, TRUE);
 
         if (rc != GTK_RESPONSE_YES) {
-            g_string_append(summary, _("\n\xE2\x9D\x8C Edits discarded by user"));
+            gchar *summary = g_strdup(_("\n\xE2\x9D\x8C Edits discarded by user"));
             lumila_utils_file_edits_free(edits);
             g_free(cleaned);
-            return g_string_free(summary, FALSE);
+            return summary;
         }
     }
 
-    for (GList *l = edits; l; l = l->next) {
-        LumilaFileEdit *edit = l->data;
-        GeanyDocument *target = find_open_doc_for_edit(edit->file_name);
-        gchar *resolved = NULL;
-
-        if (target) {
-            replace_document_content(target, edit->content);
-            g_string_append_printf(summary, "\n\xE2\x9C\x85 Edited: %s", edit->file_name);
-        } else if ((resolved = resolve_edit_path(edit->file_name)) &&
-                   g_file_test(resolved, G_FILE_TEST_EXISTS)) {
-            /* File exists on disk but is not open: open it, then replace. */
-            GeanyDocument *opened = document_open_file(resolved, FALSE, NULL, NULL);
-            if (opened && opened->editor && opened->editor->sci) {
-                replace_document_content(opened, edit->content);
-                g_string_append_printf(summary, "\n\xE2\x9C\x85 Edited: %s", edit->file_name);
-            } else {
-                g_string_append_printf(summary, "\n\xE2\x9A\xA0 Could not open: %s", edit->file_name);
-            }
-        } else {
-            GeanyFiletype *ft = filetypes_detect_from_file(edit->file_name);
-            GeanyDocument *new_doc = document_new_file(
-                resolved ? resolved : edit->file_name, ft, edit->content);
-            if (new_doc && new_doc->editor && new_doc->editor->sci) {
-                g_string_append_printf(summary, "\n\xF0\x9F\x93\x84 Created: %s", edit->file_name);
-            }
-        }
-        g_free(resolved);
-    }
-
+    gchar *summary = lumila_chat_apply_edits(edits);
     lumila_utils_file_edits_free(edits);
     g_free(cleaned);
-    return g_string_free(summary, FALSE);
+    return summary;
 }
 
 static void on_response_received(const gchar *response, gpointer user_data)
@@ -1458,6 +1494,9 @@ void lumila_chat_new_conversation(void)
 
     // Save current conversation
     lumila_chat_save_history();
+
+    /* A pending diff preview references the old response — drop it. */
+    lumila_diff_clear_all();
 
     // Clear messages
     if (messages) {

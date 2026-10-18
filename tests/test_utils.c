@@ -115,6 +115,94 @@ static void test_error_classification(void)
     printf("test_error_classification: PASS\n");
 }
 
+/* Count ops of a given kind in a diff result. */
+static int diff_count(GArray *ops, LumilaDiffKind kind)
+{
+    int n = 0;
+    for (guint i = 0; i < ops->len; i++) {
+        if (g_array_index(ops, LumilaDiffOp, i).kind == kind) n++;
+    }
+    return n;
+}
+
+static void test_diff_identical(void)
+{
+    GArray *ops = lumila_utils_diff_lines("a\nb\nc\n", "a\nb\nc\n");
+    assert(ops->len == 3);
+    assert(diff_count(ops, LUMILA_DIFF_KEEP) == 3);
+    assert(diff_count(ops, LUMILA_DIFF_DEL) == 0);
+    assert(diff_count(ops, LUMILA_DIFF_INS) == 0);
+    lumila_utils_diff_ops_free(ops);
+    printf("test_diff_identical: PASS\n");
+}
+
+static void test_diff_append(void)
+{
+    GArray *ops = lumila_utils_diff_lines("a\nb\n", "a\nb\nc\nd\n");
+    assert(diff_count(ops, LUMILA_DIFF_KEEP) == 2);
+    assert(diff_count(ops, LUMILA_DIFF_INS) == 2);
+    assert(diff_count(ops, LUMILA_DIFF_DEL) == 0);
+    /* Ins lines must carry their new-content line index. */
+    LumilaDiffOp *last = &g_array_index(ops, LumilaDiffOp, ops->len - 1);
+    assert(last->kind == LUMILA_DIFF_INS && last->new_line == 3);
+    lumila_utils_diff_ops_free(ops);
+    printf("test_diff_append: PASS\n");
+}
+
+static void test_diff_delete(void)
+{
+    GArray *ops = lumila_utils_diff_lines("a\nb\nc\nd\n", "a\nd\n");
+    assert(diff_count(ops, LUMILA_DIFF_KEEP) == 2);
+    assert(diff_count(ops, LUMILA_DIFF_DEL) == 2);
+    assert(diff_count(ops, LUMILA_DIFF_INS) == 0);
+    lumila_utils_diff_ops_free(ops);
+    printf("test_diff_delete: PASS\n");
+}
+
+static void test_diff_modify(void)
+{
+    GArray *ops = lumila_utils_diff_lines("a\nold\nc\n", "a\nnew\nc\n");
+    assert(diff_count(ops, LUMILA_DIFF_KEEP) == 2);
+    assert(diff_count(ops, LUMILA_DIFF_DEL) == 1);
+    assert(diff_count(ops, LUMILA_DIFF_INS) == 1);
+    /* DEL comes before INS for a modified line. */
+    int del_idx = -1, ins_idx = -1;
+    for (guint i = 0; i < ops->len; i++) {
+        LumilaDiffOp *op = &g_array_index(ops, LumilaDiffOp, i);
+        if (op->kind == LUMILA_DIFF_DEL) { del_idx = (int)i; assert(strcmp(op->text, "old") == 0); }
+        if (op->kind == LUMILA_DIFF_INS) { ins_idx = (int)i; assert(strcmp(op->text, "new") == 0); assert(op->new_line == 1); }
+    }
+    assert(del_idx >= 0 && ins_idx > del_idx);
+    lumila_utils_diff_ops_free(ops);
+    printf("test_diff_modify: PASS\n");
+}
+
+static void test_diff_common_prefix_suffix(void)
+{
+    const char *old = "h1\nh2\nmid_old1\nmid_old2\nt1\nt2\n";
+    const char *new = "h1\nh2\nmid_new\nt1\nt2\n";
+    GArray *ops = lumila_utils_diff_lines(old, new);
+    assert(diff_count(ops, LUMILA_DIFF_KEEP) == 4);
+    assert(diff_count(ops, LUMILA_DIFF_DEL) == 2);
+    assert(diff_count(ops, LUMILA_DIFF_INS) == 1);
+    lumila_utils_diff_ops_free(ops);
+    printf("test_diff_common_prefix_suffix: PASS\n");
+}
+
+static void test_diff_empty(void)
+{
+    /* Old empty -> everything is INS; new empty -> everything is DEL. */
+    GArray *ops = lumila_utils_diff_lines("", "a\nb\n");
+    assert(diff_count(ops, LUMILA_DIFF_INS) == 2);
+    assert(diff_count(ops, LUMILA_DIFF_KEEP) == 0);
+    lumila_utils_diff_ops_free(ops);
+
+    ops = lumila_utils_diff_lines("a\nb\n", "");
+    assert(diff_count(ops, LUMILA_DIFF_DEL) == 2);
+    lumila_utils_diff_ops_free(ops);
+    printf("test_diff_empty: PASS\n");
+}
+
 int main(void)
 {
     printf("=== Utils Tests ===\n");
@@ -124,6 +212,12 @@ int main(void)
     test_parse_file_edit_multiple();
     test_parse_no_edits();
     test_error_classification();
+    test_diff_identical();
+    test_diff_append();
+    test_diff_delete();
+    test_diff_modify();
+    test_diff_common_prefix_suffix();
+    test_diff_empty();
     printf("=== All tests passed ===\n");
     return 0;
 }

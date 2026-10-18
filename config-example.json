@@ -1,5 +1,5 @@
 {
-  "version": "0.11.0",
+  "version": "0.12.0",
   "api_keys": {
     "openai": "",
     "anthropic": "",
@@ -24,7 +24,10 @@
     "context_max_chars": 20000,
     "history_max_messages": 40,
     "reasoning_effort": "medium",
-    "thinking_level": "medium"
+    "thinking_level": "medium",
+    "autocomplete": false,
+    "autocomplete_model": "",
+    "diff_preview": true
   },
   "custom_models": {
     "openai": "",

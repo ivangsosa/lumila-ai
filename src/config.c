@@ -157,6 +157,9 @@ void lumila_config_init(void)
         json_object_set_new(defaults, "auto_retry", json_true());
         json_object_set_new(defaults, "history_max_messages", json_integer(40));
         json_object_set_new(defaults, "plan_mode", json_false());
+        json_object_set_new(defaults, "autocomplete", json_false());
+        json_object_set_new(defaults, "autocomplete_model", json_string(""));
+        json_object_set_new(defaults, "diff_preview", json_true());
         json_object_set_new(root, "defaults", defaults);
 
         json_t *custom = json_object();
@@ -372,6 +375,31 @@ gboolean lumila_config_get_auto_retry(void)
 gint lumila_config_get_history_max_messages(void)
 {
     return get_defaults_int("history_max_messages", 40);
+}
+
+gboolean lumila_config_get_autocomplete(void)
+{
+    return get_defaults_bool("autocomplete", FALSE);
+}
+
+void lumila_config_set_autocomplete(gboolean enabled)
+{
+    set_defaults_bool("autocomplete", enabled);
+}
+
+const gchar *lumila_config_get_autocomplete_model(void)
+{
+    return get_defaults_string("autocomplete_model", NULL);
+}
+
+gboolean lumila_config_get_diff_preview(void)
+{
+    return get_defaults_bool("diff_preview", TRUE);
+}
+
+void lumila_config_set_diff_preview(gboolean enabled)
+{
+    set_defaults_bool("diff_preview", enabled);
 }
 
 const gchar *lumila_config_get_reasoning_effort(void)

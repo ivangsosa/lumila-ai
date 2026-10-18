@@ -157,6 +157,18 @@ static void on_confirm_edits_toggled(GtkCheckMenuItem *item, gpointer user_data)
     lumila_config_set_confirm_edits(gtk_check_menu_item_get_active(item));
 }
 
+static void on_diff_preview_toggled(GtkCheckMenuItem *item, gpointer user_data)
+{
+    (void)user_data;
+    lumila_config_set_diff_preview(gtk_check_menu_item_get_active(item));
+}
+
+static void on_autocomplete_toggled(GtkCheckMenuItem *item, gpointer user_data)
+{
+    (void)user_data;
+    lumila_config_set_autocomplete(gtk_check_menu_item_get_active(item));
+}
+
 static void on_more_clicked(GtkButton *button, gpointer user_data)
 {
     GtkWidget *menu = GTK_WIDGET(user_data);
@@ -294,6 +306,25 @@ void lumila_sidebar_init(void)
     g_signal_connect(item_confirm_edits, "toggled",
                      G_CALLBACK(on_confirm_edits_toggled), NULL);
     gtk_menu_shell_append(GTK_MENU_SHELL(more_menu), item_confirm_edits);
+
+    GtkWidget *item_diff_preview = gtk_check_menu_item_new_with_label("Diff Preview");
+    gtk_widget_set_tooltip_text(item_diff_preview,
+        "Show proposed ```file: changes inline (green/red) before applying");
+    gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(item_diff_preview),
+                                   lumila_config_get_diff_preview());
+    g_signal_connect(item_diff_preview, "toggled",
+                     G_CALLBACK(on_diff_preview_toggled), NULL);
+    gtk_menu_shell_append(GTK_MENU_SHELL(more_menu), item_diff_preview);
+
+    GtkWidget *item_autocomplete = gtk_check_menu_item_new_with_label("AI Autocomplete");
+    gtk_widget_set_tooltip_text(item_autocomplete,
+        "Ghost-text suggestions while typing (accepts with the "
+        "assignable 'Accept AI completion' keybinding)");
+    gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(item_autocomplete),
+                                   lumila_config_get_autocomplete());
+    g_signal_connect(item_autocomplete, "toggled",
+                     G_CALLBACK(on_autocomplete_toggled), NULL);
+    gtk_menu_shell_append(GTK_MENU_SHELL(more_menu), item_autocomplete);
 
     GtkWidget *sep3 = gtk_separator_menu_item_new();
     gtk_menu_shell_append(GTK_MENU_SHELL(more_menu), sep3);

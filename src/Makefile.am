@@ -40,7 +40,13 @@ lumila_ai_la_SOURCES = \
 	providers/moonshot.c \
 	providers/moonshot.h \
 	utils.c \
-	utils.h
+	utils.h \
+	diff.c \
+	diff.h \
+	autocomplete.c \
+	autocomplete.h \
+	contextmenu.c \
+	contextmenu.h
 
 lumila_ai_la_CFLAGS = \
 	-I$(top_builddir) \

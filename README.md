@@ -1,4 +1,4 @@
-# Lumila AI - Plugin para Geany v0.11.0
+# Lumila AI - Plugin para Geany v0.12.0
 
 AI Assistant plugin for Geany editor with multi-provider support, persistent history, and real-time streaming.
 
@@ -14,8 +14,11 @@ AI Assistant plugin for Geany editor with multi-provider support, persistent his
   - Usa el formato ` ```file:nombre.ext ` para editar (soporta rutas como `src/foo.c` y contenido con fences anidados)
   - Crea archivos nuevos si no existen (con filetype detectado por extensión)
   - **Confirmación antes de aplicar** (Apply/Discard, desactivable con `confirm_edits`)
+  - **Previsualización diff inline**: decora los cambios propuestos en el editor (líneas nuevas/cambiadas en verde, eliminadas en rojo) antes de aplicar, con diálogo Apply/Discard no-modal (desactivable con `diff_preview`)
   - Preserva el historial de undo del editor
   - Resumen de cambios en el chat
+- **Menú contextual en el editor**: submenú *Lumila AI* al hacer clic derecho — *Explain This*, *Refactor Selection*, *Generate Docstring*, *Add Type Hints*, *Send Selection to Chat* y *Accept AI Completion*
+- **Autocompletado con IA**: sugerencias estilo Copilot como "ghost text" gris mientras escribís (opt-in con `autocomplete`, modelo dedicado vía `autocomplete_model`); se acepta con el atajo asignable *Lumila: Accept AI completion* o desde el menú contextual
 - **Streaming de respuestas** (todos los providers con libsoup-3.0): texto en tiempo real
   - Errores HTTP (401/429/5xx) visibles con el mensaje real de la API
   - Cancelar con **Esc** conserva el texto parcial y deja el provider listo para reenviar
@@ -24,7 +27,7 @@ AI Assistant plugin for Geany editor with multi-provider support, persistent his
 - **Contador de tokens**: estimación (chars/4) durante el envío; uso real cuando el provider lo reporta
 - **Botón Copy** en cada bloque de código del chat
 - **Modelos declarados en `config.json`** (`models[]`): agregá modelos al combo sin recompilar
-- **Keybindings asignables**: *Lumila: Send selection to AI* y *Lumila: Send current file to AI* en Preferencias → Combinaciones de teclas
+- **Keybindings asignables**: *Lumila: Send selection to AI*, *Lumila: Send current file to AI* y *Lumila: Accept AI completion* en Preferencias → Combinaciones de teclas
 - **Slash commands** rápidos: `/explain`, `/refactor`, `/test`, `/doc`, `/fix`, `/commit`, `/review`
 - **Send Selection**: envía el texto seleccionado en el editor como contexto
 - **Send Current File**: envía el archivo activo completo como contexto
@@ -131,7 +134,7 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
 
 ```json
 {
-  "version": "0.11.0",
+  "version": "0.12.0",
   "api_keys": {
     "openai": "",
     "anthropic": "",
@@ -156,7 +159,10 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
     "context_max_chars": 20000,
     "history_max_messages": 40,
     "reasoning_effort": "medium",
-    "thinking_level": "medium"
+    "thinking_level": "medium",
+    "autocomplete": false,
+    "autocomplete_model": "",
+    "diff_preview": true
   },
   "custom_models": {
     "openai": "",
@@ -214,6 +220,9 @@ El archivo `~/.config/geany/plugins/lumila-ai/config.json` se crea automáticame
 - **history_max_messages**: máximo de mensajes de historial enviados por request (default 40, 0 = sin límite)
 - **reasoning_effort**: `"low"|"medium"|"high"|"xhigh"|"max"` para GPT-6 y Claude 5.5 (default `"medium"`)
 - **thinking_level**: `"low"|"medium"|"high"` para Gemini 3.x (default `"medium"`)
+- **autocomplete**: sugerencias ghost-text al tipear (default `false` — opt-in porque dispara requests por keystroke)
+- **autocomplete_model**: modelo dedicado para el autocompletado, por nombre de API (ej. `"qwen3.6-27b"`). Vacío = usa el modelo seleccionado en el chat
+- **diff_preview**: decora los cambios propuestos inline antes del diálogo Apply/Discard (default `true`)
 - **endpoints**: sobrescribe la URL base de cada provider (vacío = usar default). Útil para proxies o instancias self-hosted de Ollama
 - **timeouts**: timeout en segundos por provider (default 180s, Ollama 120s — los modelos con razonamiento pueden tardar antes del primer token)
 - **models**: lista de modelos extra que aparecen en el combo. Cada entrada: `{"name": ..., "provider": ..., "model": ..., "flags": [...]}` con flags opcionales `no_sampling`, `max_completion_tokens`, `reasoning_effort`, `anthropic_effort`, `thinking_level`
@@ -340,6 +349,33 @@ El plugin detecta estos bloques y:
 
 Los bloques ` ```file: ` soportan rutas (`src/foo.c`) y contenido que contiene otros code fences (el parser rastrea la profundidad).
 
+### Previsualización diff inline
+
+Con `confirm_edits` y `diff_preview` activos, los bloques ` ```file: ` decoran los archivos afectados **antes** de aplicar:
+
+- **Verde**: líneas nuevas o modificadas (fondo del margen)
+- **Rojo**: líneas eliminadas (anotaciones bajo la línea anterior)
+
+El diálogo **Apply/Discard no es modal**: podés scrollear y cambiar de pestaña para inspeccionar el diff en todos los archivos antes de decidir. Si editás un archivo decorado durante el preview, ese archivo sale de la propuesta (nunca se pisa lo que escribiste). Los archivos abiertos solo para el preview se cierran al descartar.
+
+### Menú contextual del editor
+
+Click derecho en el editor → **Lumila AI**:
+
+- **Explain This**: explica la selección o la palabra bajo el cursor
+- **Refactor Selection** / **Generate Docstring** / **Add Type Hints**: transforman la selección
+- **Send Selection to Chat**: igual que el botón Send Selection
+- **Accept AI Completion**: inserta la sugerencia pendiente del autocompletado
+
+### Autocompletado con IA
+
+Activá `autocomplete: true` en `config.json` (o el toggle **AI Autocomplete** en el menú `...`). Al tipear, tras ~600 ms sin teclear, el plugin pide una continuación corta al modelo y la muestra como **ghost text gris**:
+
+- **Aceptar**: atajo asignable *Lumila: Accept AI completion* (Preferencias → Combinaciones de teclas) o el menú contextual
+- **Descartar**: seguí escribiendo o mové el cursor — se descarta solo
+
+Para evitar costos/latencia, definí un modelo rápido dedicado en `autocomplete_model` (ej. un Ollama local); vacío usa el modelo del chat. Las respuestas con error se descartan en silencio.
+
 ### Modelos custom
 
 Agregá un modelo propio en `config.json` sin recompilar:
@@ -355,20 +391,17 @@ Dejá vacío (`""`) para usar el modelo por defecto del provider.
 
 ## Roadmap
 
-### Medias (requieren trabajo adicional)
+### Medias (esfuerzo medio)
 
 - [ ] **Contexto multi-archivo automático**: al enviar un mensaje, incluir automáticamente el archivo activo + archivos recientes + archivos del proyecto (`*.geany`)
-- [ ] **Menú contextual en el editor**: integrar acciones al menú derecho de Geany — *Explain this*, *Refactor selection*, *Generate docstring*, *Add type hints* (los keybindings de v0.11 cubren parte de esto)
 - [ ] **Ejecución de comandos**: detectar bloques ` ```bash ` y mostrar botón *Run* que ejecute el comando en el directorio del proyecto (`g_spawn_async`)
-- [ ] **Previsualización diff inline**: mostrar cambios propuestos como anotaciones de Scintilla (verde/rojo) con botones *Apply* / *Discard* antes de modificar el archivo
 - [ ] **Refresh dinámico de modelos**: poblar el combo desde `/v1/models` (OpenAI-compatibles) y `/api/tags` (Ollama)
 
-### Avanzadas (diferenciadoras, mayor esfuerzo)
+### Avanzadas (esfuerzo alto)
 
 - [ ] **Índice de proyecto (vector search local)**: indexar archivos del proyecto (TF-IDF o embeddings livianos) para encontrar automáticamente definiciones relevantes al preguntar "¿dónde se define X?"
 - [ ] **Modo Agent / Composer**: la IA puede leer múltiples archivos, proponer cambios, pedir confirmación y aplicarlos en pasos iterativos
 - [ ] **Contexto LSP**: integrar con `geany-lsp` para capturar diagnostics (errores de tipo, lint) y enviarlos como contexto
-- [ ] **Autocompletado con IA**: sugerencias inline mientras se escribe (estilo Copilot) vía hooks de Scintilla (`char-added` + ghost text)
 
 ### Infraestructura
 

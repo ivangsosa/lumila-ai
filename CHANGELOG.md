@@ -3,7 +3,14 @@
 El formato sigue [Keep a Changelog](https://keepachangelog.com/) y el
 proyecto usa versionado semántico.
 
-## [Unreleased]
+## [0.12.0] - 2026-10-17
+
+### Added
+
+- Menú contextual en el editor: submenú "Lumila AI" con Explain This, Refactor Selection, Generate Docstring, Add Type Hints, Send Selection y Accept AI Completion.
+- Previsualización diff inline: con `confirm_edits` activo, los bloques ` ```file: ` decoran los archivos afectados (verde para líneas nuevas/cambiadas, rojo para eliminadas) antes de aplicar, con diálogo no-modal Apply/Discard.
+- Autocompletado con IA (estilo Copilot): sugerencias "ghost text" grises al tipear, con debounce; se aceptan con el atajo asignable *Lumila: Accept AI completion* o desde el menú contextual.
+- Nuevas opciones de configuración: `autocomplete`, `autocomplete_model` (modelo dedicado para completar) y `diff_preview`.
 
 ## [0.11.0] - 2026-10-11
 

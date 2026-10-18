@@ -53,6 +53,18 @@ gboolean lumila_config_get_auto_retry(void);
 /* Max messages kept in the request context (0 = unlimited). */
 gint lumila_config_get_history_max_messages(void);
 
+/* Ghost-text AI completions while typing (opt-in, fires requests on a
+ * typing debounce). */
+gboolean lumila_config_get_autocomplete(void);
+void lumila_config_set_autocomplete(gboolean enabled);
+
+/* API model name for the completion request ("" = current chat model). */
+const gchar *lumila_config_get_autocomplete_model(void);
+
+/* Decorate affected files inline before the Apply/Discard dialog. */
+gboolean lumila_config_get_diff_preview(void);
+void lumila_config_set_diff_preview(gboolean enabled);
+
 /* "low"|"medium"|"high"|"xhigh"|"max"|"none" (model dependent). */
 const gchar *lumila_config_get_reasoning_effort(void);
 /* Gemini thinking level: "low"|"medium"|"high". */
